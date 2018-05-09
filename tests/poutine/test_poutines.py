@@ -629,6 +629,21 @@ class InferConfigHandlerTests(TestCase):
         assert tr.nodes["p"]["infer"] == {}
 
 
+class ParamConditionHandlerTests(TestCase):
+    def setUp(self):
+        def model():
+            p = pyro.param("p", torch.tensor(0.5))
+            sample = pyro.sample("sample", Normal(p, 1.))
+            return pyro.sample("obs", Normal(sample, 1.))
+
+        self.model = model
+
+    def test_param_condition(self):
+        model = poutine.condition(self.model, data={"p": 2.5})
+        tr = poutine.trace(model).get_trace()
+        assert tr.nodes["p"]["value"] == torch.tensor(2.5)
+
+
 @pytest.mark.parametrize('first_available_dim', [0, 1, 2])
 @pytest.mark.parametrize('depth', [0, 1, 2])
 def test_enumerate_poutine(depth, first_available_dim):

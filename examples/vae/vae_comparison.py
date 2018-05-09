@@ -11,7 +11,7 @@ from torchvision.utils import save_image
 
 import pyro
 from pyro.contrib.examples import util
-from pyro.distributions import Bernoulli, Normal
+from pyro.distributions import Bernoulli, Normal, Beta
 from pyro.infer import SVI, Trace_ELBO
 from pyro.optim import Adam
 from utils.mnist_cached import DATA_DIR, RESULTS_DIR
@@ -186,7 +186,7 @@ class PyroVAEImpl(VAE):
             z = pyro.sample('latent', Normal(z_mean, z_std).independent(1))
             img = decoder.forward(z)
             pyro.sample('obs',
-                        Bernoulli(img).independent(1),
+                        Normal(img, 0.5).independent(1),
                         obs=data.reshape(-1, 784))
 
     def guide(self, data):
