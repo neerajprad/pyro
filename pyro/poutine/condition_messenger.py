@@ -1,5 +1,6 @@
 from __future__ import absolute_import, division, print_function
 
+
 from .messenger import Messenger
 from .trace_struct import Trace
 
@@ -40,7 +41,6 @@ class ConditionMessenger(Messenger):
             else:
                 msg["value"] = self.data[name]
             msg["is_observed"] = True
-        return None
-
-    def _pyro_param(self, msg):
+            msg["done"] = True
+            msg["stop"] = True
         return None
