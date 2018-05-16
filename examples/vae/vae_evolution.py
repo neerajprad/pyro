@@ -1,3 +1,5 @@
+from __future__ import absolute_import, division, print_function
+
 import argparse
 import logging
 import os
@@ -166,8 +168,9 @@ class PyroVAEImpl(VAE):
         self.batch_size = kwargs.pop('batch_size')
         self.selection_size = kwargs.pop('selection_size')
         self.num_particles = kwargs.pop('num_particles')
-        self.mutation_val = kwargs.pop('mutation')
-        self.decay = kwargs.pop('decay')
+        self.decay_schedule = kwargs.pop('decay_schedule')
+        self.user_inputs = kwargs.pop('user_inputs')
+        self.mutation_val = self.decay_schedule[0][0]
         self._t = 0
         self.optim_type = kwargs.pop('optim')
         super(PyroVAEImpl, self).__init__(*args, **kwargs)
@@ -214,13 +217,19 @@ class PyroVAEImpl(VAE):
         return loss
 
     def mutation_fns(self, param):
-        decay1, decay2, change_point, limit = self.decay
-        std = decay1 ** min(change_point, self._t) * self.mutation_val
-        std = decay2 ** max(0, self._t - change_point) * std
-        if std < limit:
-            std = limit
-        print("mutation: {}".format(std))
-        return lambda x: dist.Normal(x, x.new_tensor(std)).sample()
+        if self.user_inputs and self._t % 400:
+            decay = raw_input("decay: ")
+            mutation_val = raw_input("mutation_val: ")
+            if decay:
+                if not mutation_val:
+                    mutation_val = self.mutation_val
+                self.decay_schedule = [(mutation_val, decay)]
+        for mutation_val, decay in self.decay_schedule:
+            if self.mutation_val <= mutation_val:
+                std = decay * self.mutation_val
+        self.mutation_val = std
+        print("mutation: {}".format(self.mutation_val))
+        return lambda x: dist.Normal(x, x.new_tensor(self.mutation_val)).sample()
 
     def ea_optimizer(self):
         loss = Parallelized_ELBO(self.model,
@@ -265,8 +274,9 @@ def main(args):
                       test_loader,
                       optim=args.optim,
                       cuda=args.cuda,
-                      mutation=args.mutation,
-                      decay=(args.decay1, args.decay2, args.change_point, args.decay_limit),
+                      decay_schedule=zip([float(x) for x in args.mutation_schedule],
+                                         [float(x) for x in args.decay_schedule]),
+                      user_inputs=args.user_inputs,
                       num_particles=args.num_particles,
                       batch_size=args.batch_size,
                       population_size=args.population_size,
@@ -285,16 +295,15 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', nargs='?', default=128, type=int)
     parser.add_argument('--rng-seed', nargs='?', default=0, type=int)
     parser.add_argument('--num-particles', nargs='?', default=30, type=int)
-    parser.add_argument('--mutation', nargs='?', default=0.01, type=float)
-    parser.add_argument('--decay1', nargs='?', default=0.999, type=float)
-    parser.add_argument('--decay2', nargs='?', default=0.9999, type=float)
-    parser.add_argument('--change-point', nargs='?', default=2000, type=float)
-    parser.add_argument('--decay-limit', nargs='?', default=0.002, type=float)
+    parser.add_argument('-d', '--decay-schedule', action='append', default=[0.995])
+    parser.add_argument('-m', '--mutation-schedule', action='append', default=[0.01])
+    parser.add_argument('--user-inputs', action='store_true')
     parser.add_argument('--population-size', default=300, type=int)
     parser.add_argument('--selection-size', default=30, type=int)
     parser.add_argument('--optim', default='ea', type=str)
     parser.add_argument('--skip-eval', action='store_true')
     parser.set_defaults(skip_eval=False)
     parser.set_defaults(cuda=False)
+    parser.set_defaults(user_inputs=False)
     args = parser.parse_args()
     main(args)
