@@ -217,13 +217,13 @@ class PyroVAEImpl(VAE):
         return loss
 
     def mutation_fns(self, param):
-        if self.user_inputs and self._t % 400:
+        if self.user_inputs and self._t % 400 == 0:
             decay = raw_input("decay: ")
             mutation_val = raw_input("mutation_val: ")
             if decay:
                 if not mutation_val:
                     mutation_val = self.mutation_val
-                self.decay_schedule = [(mutation_val, decay)]
+                self.decay_schedule = [(float(mutation_val), float(decay))]
         for mutation_val, decay in self.decay_schedule:
             if self.mutation_val <= mutation_val:
                 std = decay * self.mutation_val
