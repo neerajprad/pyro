@@ -172,6 +172,7 @@ class PyroVAEImpl(VAE):
         self.user_inputs = kwargs.pop('user_inputs')
         self.mutation_val = self.decay_schedule[0][0]
         self._t = 0
+        self._t_prev = None
         self.optim_type = kwargs.pop('optim')
         super(PyroVAEImpl, self).__init__(*args, **kwargs)
         if self.optim_type == 'ea':
@@ -217,6 +218,8 @@ class PyroVAEImpl(VAE):
         return loss
 
     def mutation_fns(self, param):
+        if self._t == self._t_prev:
+            return lambda x: dist.Normal(x, x.new_tensor(self.mutation_val)).sample()
         if self.user_inputs and self._t % 400 == 0:
             decay = raw_input("decay: ")
             mutation_val = raw_input("mutation_val: ")
@@ -229,6 +232,7 @@ class PyroVAEImpl(VAE):
                 std = decay * self.mutation_val
         self.mutation_val = std
         print("mutation: {}".format(self.mutation_val))
+        self._t_prev = self._t
         return lambda x: dist.Normal(x, x.new_tensor(self.mutation_val)).sample()
 
     def ea_optimizer(self):
