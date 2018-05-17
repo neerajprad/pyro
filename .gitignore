@@ -13,6 +13,7 @@ pyro/contrib/examples/raw
 pyro/_version.py
 processed
 raw
+.cron
 
 # Logs
 logs
