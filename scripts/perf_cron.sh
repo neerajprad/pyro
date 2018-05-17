@@ -16,5 +16,5 @@ git rebase dev
 bash perf_test.sh "${ref}"
 if [[ $? -ne 0 ]]; then
   cur_head=$(git rev-parse --abbrev-ref HEAD)
-  echo "${cur_head}" > "${REF_HEAD_FILE}"
+  echo "${cur_head}" >| "${REF_HEAD_FILE}"
 fi
