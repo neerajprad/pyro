@@ -227,6 +227,7 @@ class PyroVAEImpl(VAE):
                 if not mutation_val:
                     mutation_val = self.mutation_val
                 self.decay_schedule = [(float(mutation_val), float(decay))]
+                self.mutation_val = self.decay_schedule[0][0]
         decay = 0.999
         for mutation_val, decay in self.decay_schedule:
             if self.mutation_val <= mutation_val:
