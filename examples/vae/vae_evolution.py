@@ -289,6 +289,11 @@ def main(args):
                       population_size=args.population_size,
                       selection_size=args.selection_size)
     print('Running VAE implementation using: {}'.format(args.optim))
+    if args.test:
+        vae.optim = 'svi'
+        for i in range(2):
+            vae.train(i)
+        vae.optim = args.optim
     for i in range(args.num_epochs):
         vae.train(i)
         if not args.skip_eval:
@@ -309,8 +314,10 @@ if __name__ == '__main__':
     parser.add_argument('--selection-size', default=30, type=int)
     parser.add_argument('--optim', default='ea', type=str)
     parser.add_argument('--skip-eval', action='store_true')
+    parser.add_argument('--test', action='store_true')
     parser.set_defaults(skip_eval=False)
     parser.set_defaults(cuda=False)
     parser.set_defaults(user_inputs=False)
+    parser.set_defaults(test=False)
     args = parser.parse_args()
     main(args)
