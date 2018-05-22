@@ -290,10 +290,10 @@ def main(args):
                       selection_size=args.selection_size)
     print('Running VAE implementation using: {}'.format(args.optim))
     if args.test:
-        vae.optim = 'svi'
+        vae.optimizer = vae.svi_optimizer()
         for i in range(2):
             vae.train(i)
-        vae.optim = args.optim
+        vae.optimizer = vae.ea_optimizer()
     for i in range(args.num_epochs):
         vae.train(i)
         if not args.skip_eval:
