@@ -12,6 +12,7 @@ from six.moves import input
 from torchvision.utils import save_image
 
 import pyro
+import pyro.poutine as poutine
 from pyro.contrib.examples import util
 import pyro.distributions as dist
 from pyro.infer import Trace_ELBO, SVI
@@ -291,9 +292,12 @@ def main(args):
     print('Running VAE implementation using: {}'.format(args.optim))
     if args.test:
         vae.optimizer = vae.svi_optimizer()
-        for i in range(2):
+        for i in range(1):
             vae.train(i)
         vae.optimizer = vae.ea_optimizer()
+        for param_name in pyro.get_param_store().get_all_param_names():
+            param = pyro.get_param_store().get_param(param_name).unconstrained()
+            param[1:].zero_()
     for i in range(args.num_epochs):
         vae.train(i)
         if not args.skip_eval:
