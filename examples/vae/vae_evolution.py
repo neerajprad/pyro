@@ -8,6 +8,7 @@ from abc import ABCMeta, abstractmethod
 import torch
 import torch.nn as nn
 from six import add_metaclass
+from six.moves import input
 from torchvision.utils import save_image
 
 import pyro
@@ -221,8 +222,8 @@ class PyroVAEImpl(VAE):
         if self._t == self._t_prev:
             return lambda x: dist.Normal(x, x.new_tensor(self.mutation_val)).sample()
         if self.user_inputs and self._t % 400 == 0:
-            decay = raw_input("decay: ")
-            mutation_val = raw_input("mutation_val: ")
+            decay = input("decay: ")
+            mutation_val = input("mutation_val: ")
             if decay:
                 if not mutation_val:
                     mutation_val = self.mutation_val
