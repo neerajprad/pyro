@@ -114,7 +114,8 @@ class Evolution(object):
             parent_losses = self.parent_loss[parent_idxs]
             losses = (1 - self.decay) * parent_losses + losses
         sorted_losses, sort_index = torch.sort(losses)
-        top_loss, top_n = losses.topk(self.selection_size, largest=False, sorted=True)
+        top_n = sort_index[:self.selection_size]
+        top_loss = losses[top_n]
         self.logger.info("\nGeneration: {}".format(self._t))
         self._log_summary("Overall population", sorted_losses)
         self._log_summary("Selected population", top_loss)
@@ -128,4 +129,4 @@ class Evolution(object):
         self.elite_loss = sorted_losses[0]
         self.parent_loss = sorted_losses
         self._t += 1
-        return self.elite_loss
+        return self.elite_loss.clone()
