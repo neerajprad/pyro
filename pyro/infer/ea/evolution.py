@@ -107,7 +107,7 @@ class Evolution(object):
             for _ in range(self.num_particles-1):
                 losses.append(self.evaluate_loss(*args, **kwargs).detach())
         losses = torch.stack(losses, dim=0).mean(dim=0)
-        if self.parent_loss:
+        if self.parent_loss is not None:
             parent_losses = self.parent_loss[parent_idxs]
             losses = (1 - self.decay) * parent_losses + losses
         sorted_losses, sort_index = torch.sort(losses)
@@ -115,7 +115,7 @@ class Evolution(object):
         self.logger.info("\nGeneration: {}".format(self._t))
         self._log_summary("Overall population", sorted_losses)
         self._log_summary("Selected population", top_loss)
-        if self.parent_loss:
+        if self.parent_loss is not None:
             self._log_summary("Parent population", torch.cat([torch.tensor([self.elite_loss]),
                                                               torch.self.parent_loss]))
         next_generation = {k: v[top_n] for k, v in population.items()}
