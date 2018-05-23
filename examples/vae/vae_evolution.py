@@ -320,7 +320,7 @@ if __name__ == '__main__':
     parser.add_argument('--selection-size', default=30, type=int)
     parser.add_argument('--optim', default='ea', type=str)
     parser.add_argument('--skip-eval', action='store_true')
-    parser.add_argument('--inheritance-decay', default=1.)
+    parser.add_argument('--inheritance-decay', default=1., type=float)
     parser.add_argument('--test', action='store_true')
     parser.set_defaults(skip_eval=False)
     parser.set_defaults(cuda=False)
