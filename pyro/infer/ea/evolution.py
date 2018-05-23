@@ -112,7 +112,7 @@ class Evolution(object):
         losses = torch.stack(losses, dim=0).mean(dim=0)
         if self.parent_loss is not None:
             parent_losses = self.parent_loss[parent_idxs]
-            losses = (1 - self.decay) * parent_losses + losses
+            losses = (1 - self.decay) * parent_losses + self.decay * losses
         sorted_losses, sort_index = torch.sort(losses)
         top_n = sort_index[:self.selection_size]
         top_loss = losses[top_n]
