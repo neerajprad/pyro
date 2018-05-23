@@ -123,6 +123,6 @@ class Evolution(object):
         for k, v in next_generation.items():
             self.elite[k] = v[0]
             self.parents[k] = v[1:]
-        self.elite_loss, self.parent_loss = self.parent_loss[0], self.parent_loss[1:]
+        self.elite_loss, self.parent_loss = sorted_losses[0], sorted_losses[1:]
         self._t += 1
         return self.elite_loss
