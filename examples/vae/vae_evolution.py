@@ -12,7 +12,6 @@ from six.moves import input
 from torchvision.utils import save_image
 
 import pyro
-import pyro.poutine as poutine
 from pyro.contrib.examples import util
 import pyro.distributions as dist
 from pyro.infer import Trace_ELBO, SVI
@@ -176,6 +175,7 @@ class PyroVAEImpl(VAE):
         self._t = 0
         self._t_prev = None
         self.optim_type = kwargs.pop('optim')
+        self.inheritance_decay = kwargs.pop('inheritance_decay')
         super(PyroVAEImpl, self).__init__(*args, **kwargs)
         if self.optim_type == 'ea':
             self.optimizer = self.ea_optimizer()
@@ -248,7 +248,8 @@ class PyroVAEImpl(VAE):
                          self.mutation_fns,
                          num_particles=self.num_particles,
                          population_size=self.population_size,
-                         selection_size=self.selection_size)
+                         selection_size=self.selection_size,
+                         inheritance_decay=self.inheritance_decay)
 
     def svi_optimizer(self):
         optimizer = Adam({'lr': 0.001})
@@ -282,6 +283,7 @@ def main(args):
                       test_loader,
                       optim=args.optim,
                       cuda=args.cuda,
+                      inheritance_decay=args.inheritance_decay,
                       decay_schedule=list(zip([float(x) for x in args.mutation_schedule],
                                               [float(x) for x in args.decay_schedule])),
                       user_inputs=args.user_inputs,
@@ -318,6 +320,7 @@ if __name__ == '__main__':
     parser.add_argument('--selection-size', default=30, type=int)
     parser.add_argument('--optim', default='ea', type=str)
     parser.add_argument('--skip-eval', action='store_true')
+    parser.add_argument('--inheritance-decay', default=1.)
     parser.add_argument('--test', action='store_true')
     parser.set_defaults(skip_eval=False)
     parser.set_defaults(cuda=False)

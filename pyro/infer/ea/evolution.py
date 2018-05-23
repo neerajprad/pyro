@@ -3,7 +3,6 @@ from __future__ import absolute_import, division, print_function
 
 import logging
 
-import numpy as np
 import sys
 import torch
 
@@ -28,18 +27,21 @@ class Evolution(object):
                  mutation_fns,
                  population_size,
                  selection_size,
-                 num_particles=1):
+                 num_particles=1,
+                 inheritance_decay=1.):
         self.elbo = elbo
         self.population_size = population_size
         self.selection_size = selection_size
         self.mutation_fns = mutation_fns
         self.num_particles = num_particles
+        self.decay = inheritance_decay
         self.logger = logging.getLogger(__name__)
         self._reset()
 
     def _reset(self):
         self.parents = []
         self.elite = None
+        self.elite_loss = None
         self.parent_loss = None
         self._t = 0
 
@@ -82,6 +84,7 @@ class Evolution(object):
 
     def step(self, *args, **kwargs):
         initial_candidates = {}
+        parent_idxs = None
         if not self.parents:
             with poutine.trace(param_only=True) as param_capture:
                 self.evaluate_loss(*args, **kwargs)
@@ -92,9 +95,10 @@ class Evolution(object):
             for k, v in self.parents.items():
                 value = v.detach().clone()
                 num_candidates = value.shape[0]
-                initial_candidates[k] = value[torch.randint(0,
-                                                            num_candidates,
-                                                            (self.population_size-1,)).type(torch.long)]
+                parent_idxs = torch.randint(0,
+                                            num_candidates,
+                                            (self.population_size-1,)).type(torch.long)
+                initial_candidates[k] = value[parent_idxs]
 
         population = self._mutate(initial_candidates, self.elite)
 
@@ -102,19 +106,23 @@ class Evolution(object):
         if self.num_particles > 1:
             for _ in range(self.num_particles-1):
                 losses.append(self.evaluate_loss(*args, **kwargs).detach())
-        losses = torch.stack(losses, dim=0).mean(dim=0).cpu().numpy()
-        sort_index = np.argsort(losses)
-        top_n = sort_index[:self.selection_size]
-        self.logger.info("\nGeneration: {}".format(self._t))
-        self._log_summary("Overall population", [losses[i] for i in sort_index])
-        self._log_summary("Selected population", [losses[i] for i in top_n])
+        losses = torch.stack(losses, dim=0).mean(dim=0)
         if self.parent_loss:
-            self._log_summary("Parent population", self.parent_loss)
-        next_generation = {k: v[torch.from_numpy(top_n).type(torch.long)] for k, v in population.items()}
+            parent_losses = self.parent_loss[parent_idxs]
+            losses = (1 - self.decay) * parent_losses + losses
+        sorted_losses, sort_index = torch.sort(losses)
+        top_loss, top_n = losses.topk(self.selection_size, largest=False, sorted=True)
+        self.logger.info("\nGeneration: {}".format(self._t))
+        self._log_summary("Overall population", sorted_losses)
+        self._log_summary("Selected population", top_loss)
+        if self.parent_loss:
+            self._log_summary("Parent population", torch.cat([torch.tensor([self.elite_loss]),
+                                                              torch.self.parent_loss]))
+        next_generation = {k: v[top_n] for k, v in population.items()}
         self.elite, self.parents = {}, {}
         for k, v in next_generation.items():
             self.elite[k] = v[0]
             self.parents[k] = v[1:]
-        self.parent_loss = [losses[i] for i in top_n]
+        self.elite_loss, self.parent_loss = self.parent_loss[0], self.parent_loss[1:]
         self._t += 1
-        return losses[0]
+        return self.elite_loss
