@@ -100,6 +100,9 @@ class Evolution(object):
                                             (self.population_size-1,)).type(torch.long)
                 initial_candidates[k] = value[parent_idxs]
 
+        # add elite to population
+        if parent_idxs is not None:
+            parent_idxs = torch.cat([torch.LongTensor([0]), parent_idxs])
         population = self._mutate(initial_candidates, self.elite)
 
         losses = [self.evaluate_loss(*args, **kwargs).detach()]
@@ -116,13 +119,13 @@ class Evolution(object):
         self._log_summary("Overall population", sorted_losses)
         self._log_summary("Selected population", top_loss)
         if self.parent_loss is not None:
-            self._log_summary("Parent population", torch.cat([torch.tensor([self.elite_loss]),
-                                                              torch.self.parent_loss]))
+            self._log_summary("Parent population", self.parent_loss)
         next_generation = {k: v[top_n] for k, v in population.items()}
         self.elite, self.parents = {}, {}
         for k, v in next_generation.items():
             self.elite[k] = v[0]
             self.parents[k] = v[1:]
-        self.elite_loss, self.parent_loss = sorted_losses[0], sorted_losses[1:]
+        self.elite_loss = sorted_losses[0]
+        self.parent_loss = sorted_losses
         self._t += 1
         return self.elite_loss
