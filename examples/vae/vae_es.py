@@ -284,10 +284,6 @@ def main(args):
                       test_loader,
                       optim=args.optim,
                       cuda=args.cuda,
-                      inheritance_decay=args.inheritance_decay,
-                      decay_schedule=list(zip([float(x) for x in args.mutation_schedule],
-                                              [float(x) for x in args.decay_schedule])),
-                      user_inputs=args.user_inputs,
                       num_particles=args.num_particles,
                       batch_size=args.batch_size,
                       population_size=args.population_size,
@@ -314,18 +310,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', nargs='?', default=128, type=int)
     parser.add_argument('--rng-seed', nargs='?', default=0, type=int)
     parser.add_argument('--num-particles', nargs='?', default=30, type=int)
-    parser.add_argument('-d', '--decay-schedule', action='append')
-    parser.add_argument('-m', '--mutation-schedule', action='append')
-    parser.add_argument('--user-inputs', action='store_true')
     parser.add_argument('--population-size', default=300, type=int)
-    parser.add_argument('--selection-size', default=30, type=int)
     parser.add_argument('--optim', default='ea', type=str)
-    parser.add_argument('--skip-eval', action='store_true')
-    parser.add_argument('--inheritance-decay', default=1., type=float)
-    parser.add_argument('--test', action='store_true')
-    parser.set_defaults(skip_eval=False)
     parser.set_defaults(cuda=False)
-    parser.set_defaults(user_inputs=False)
-    parser.set_defaults(test=False)
     args = parser.parse_args()
     main(args)

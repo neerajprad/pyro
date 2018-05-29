@@ -10,7 +10,7 @@ import pyro
 import pyro.poutine as poutine
 
 
-class Evolution(object):
+class GA(object):
     """
     A common interface for using Genetic Algorithms in Pyro.
 

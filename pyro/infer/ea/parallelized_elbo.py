@@ -116,3 +116,6 @@ class Parallelized_ELBO(Trace_ELBO):
 
     def get_loss(self, *args, **kwargs):
         return self.loss(self.model, self.guide, *args, **kwargs)
+
+    def get_loss_conditioned_on(self, data, *args, **kwargs):
+        return self.loss(self.model, poutine.condition(self.guide, data=data))
