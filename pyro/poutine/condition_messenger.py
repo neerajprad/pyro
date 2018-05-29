@@ -44,3 +44,11 @@ class ConditionMessenger(Messenger):
             msg["done"] = True
             msg["stop"] = True
         return None
+
+    def _pyro_param(self, msg):
+        name = msg['name']
+        if name in self.data:
+            msg["value"] = self.data[name]
+            msg["done"] = True
+            msg["stop"] = True
+        return None
