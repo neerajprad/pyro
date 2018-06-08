@@ -45,37 +45,6 @@ class Parallelized_ELBO(Trace_ELBO):
         self.chain_dim = self.max_iarange_nesting
         return [poutine.broadcast(fn) for fn in parallelized_fns]
 
-    def _get_traces(self, model, guide, *args, **kwargs):
-        """
-        runs the guide and runs the model against the guide with
-        the result packaged as a trace generator
-        """
-        guide_trace = poutine.trace(guide).get_trace(*args, **kwargs)
-        model_trace = poutine.trace(poutine.replay(model, trace=guide_trace)).get_trace(*args, **kwargs)
-        if is_validation_enabled():
-            check_model_guide_match(model_trace, guide_trace)
-            enumerated_sites = [name for name, site in guide_trace.nodes.items()
-                                if site["type"] == "sample" and site["infer"].get("enumerate")]
-            if enumerated_sites:
-                warnings.warn('\n'.join([
-                    'Trace_ELBO found sample sites configured for enumeration:'
-                    ', '.join(enumerated_sites),
-                    'If you want to enumerate sites, you need to use TraceEnum_ELBO instead.']))
-        guide_trace = prune_subsample_sites(guide_trace)
-        model_trace = prune_subsample_sites(model_trace)
-
-        model_trace.compute_log_prob()
-        guide_trace.compute_score_parts()
-        if is_validation_enabled():
-            for site in model_trace.nodes.values():
-                if site["type"] == "sample":
-                    check_site_shape(site, self.max_iarange_nesting)
-            for site in guide_trace.nodes.values():
-                if site["type"] == "sample":
-                    check_site_shape(site, self.max_iarange_nesting)
-
-        return model_trace, guide_trace
-
     def trace_log_prob(self, trace, rightmost=float("inf")):
         log_p = []
         for name, site in trace.nodes.items():
@@ -93,9 +62,11 @@ class Parallelized_ELBO(Trace_ELBO):
 
         Evaluates the ELBO with an estimator that uses num_particles many samples/particles.
         """
-        model_trace, guide_trace = self._get_traces(model, guide, *args, **kwargs)
-        elbo = (self.trace_log_prob(model_trace, self.chain_dim - 1) -
-                self.trace_log_prob(guide_trace, self.chain_dim - 1)) / self.num_particles
+        elbo = []
+        for model_trace, guide_trace in self._get_traces(model, guide, *args, **kwargs):
+            elbo.append((self.trace_log_prob(model_trace, self.chain_dim - 1) -
+                         self.trace_log_prob(guide_trace, self.chain_dim - 1)) / self.num_particles)
+        elbo = torch.stack(elbo).mean(0)
         if self.num_chains > 1:
             assert elbo.shape == torch.Size((self.num_chains,))
 

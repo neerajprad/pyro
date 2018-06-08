@@ -8,7 +8,6 @@ from abc import ABCMeta, abstractmethod
 import torch
 import torch.nn as nn
 from six import add_metaclass
-from six.moves import input
 from torchvision.utils import save_image
 
 import pyro
@@ -173,7 +172,6 @@ class PyroVAEImpl(VAE):
         self.selection_size = kwargs.pop('selection_size')
         self.num_particles = kwargs.pop('num_particles')
         self.decay_schedule = kwargs.pop('decay_schedule')
-        self.user_inputs = kwargs.pop('user_inputs')
         self.mutation_val = self.decay_schedule[0][0]
         self.reparam = kwargs.pop('reparam')
         if self.reparam:
@@ -196,17 +194,17 @@ class PyroVAEImpl(VAE):
             with pyro.iarange('zdim', 20, dim=-1):
                 z = pyro.sample('latent', self.Normal(data.new_tensor(0.), data.new_tensor(1.)))
                 img = decoder.forward(z)
-            data = data.reshape(data.size(0), 784)
-            pyro.sample('obs',
-                        dist.Bernoulli(img),
-                        obs=data)
+            with pyro.iarange('components', 784, dim=-1):
+                pyro.sample('obs',
+                            dist.Bernoulli(img),
+                            obs=data.reshape(-1, 784))
 
     def guide(self, data):
         encoder = pyro.module('encoder', self.vae_encoder)
         with pyro.iarange('data', data.size(0), dim=-2):
             with pyro.iarange('zdim', 20, dim=-1):
                 z_mean, z_var = encoder.forward(data)
-                if self.num_particles and self.optim_type == 'ea':
+                if self.optim_type == 'ea':
                     z_mean = z_mean.unsqueeze(1)
                     z_var = z_var.unsqueeze(1)
                 pyro.sample('latent', self.Normal(z_mean, z_var))
@@ -230,14 +228,6 @@ class PyroVAEImpl(VAE):
     def mutation_fns(self, param):
         if self._t == self._t_prev:
             return lambda x: self.Normal(x, x.new_tensor(self.mutation_val)).sample()
-        if self.user_inputs and self._t % 400 == 0:
-            decay = input("decay: ")
-            mutation_val = input("mutation_val: ")
-            if decay:
-                if not mutation_val:
-                    mutation_val = self.mutation_val
-                self.decay_schedule = [(float(mutation_val), float(decay))]
-                self.mutation_val = self.decay_schedule[0][0]
         decay = 0.999
         for mutation_val, decay in self.decay_schedule:
             if self.mutation_val <= mutation_val:
@@ -289,7 +279,7 @@ def setup(args):
 
 def main(args):
     train_loader, test_loader = setup(args)
-    if args.optim == 'ea':
+    if args.optim == 'svi' and not args.test_stability:
         args.population_size = 1
     vae = PyroVAEImpl(args,
                       train_loader,
@@ -300,16 +290,14 @@ def main(args):
                       inheritance_decay=args.inheritance_decay,
                       decay_schedule=list(zip([float(x) for x in args.mutation_schedule],
                                               [float(x) for x in args.decay_schedule])),
-                      user_inputs=args.user_inputs,
                       num_particles=args.num_particles,
                       batch_size=args.batch_size,
                       population_size=args.population_size,
                       selection_size=args.selection_size)
     print('Running VAE implementation using: {}'.format(args.optim))
-    if args.test:
+    if args.test_stability:
         vae.optimizer = vae.svi_optimizer()
-        for i in range(1):
-            vae.train(i)
+        vae.train(0)
         vae.optimizer = vae.ea_optimizer()
         for param_name in pyro.get_param_store().get_all_param_names():
             param = pyro.get_param_store().get_param(param_name).unconstrained()
@@ -328,19 +316,17 @@ if __name__ == '__main__':
     parser.add_argument('--rng-seed', nargs='?', default=0, type=int)
     parser.add_argument('-d', '--decay-schedule', action='append')
     parser.add_argument('-m', '--mutation-schedule', action='append')
-    parser.add_argument('--user-inputs', action='store_true')
     parser.add_argument('--population-size', default=100, type=int)
     parser.add_argument('--num-particles', nargs='?', default=30, type=int)
     parser.add_argument('--selection-size', default=10, type=int)
-    parser.add_argument('--optim', default='svi', type=str)
+    parser.add_argument('--optim', default='ea', type=str)
     parser.add_argument('--reparam', action='store_true')
     parser.add_argument('--skip-eval', action='store_true')
     parser.add_argument('--inheritance-decay', default=1., type=float)
-    parser.add_argument('--test', action='store_true')
+    parser.add_argument('--test-stability', action='store_true')
     parser.set_defaults(skip_eval=False)
     parser.set_defaults(reparam=False)
     parser.set_defaults(cuda=False)
-    parser.set_defaults(user_inputs=False)
     parser.set_defaults(test=False)
     args = parser.parse_args()
     if not args.decay_schedule:

@@ -1,3 +1,4 @@
+import pytest
 import torch
 import torch.nn as nn
 
@@ -47,13 +48,35 @@ def test_batched_linear_vae_shapes():
     assert img.shape == torch.Size((40, 5, 784))
 
 
-def test_batched_linear_simple():
-    input = torch.ones(1, 10)
+@pytest.mark.parametrize('input_shape,output_shape', [
+    (torch.Size((1, 10)), torch.Size((2, 1, 10))),
+    (torch.Size((2, 1, 10)), torch.Size((2, 1, 10))),
+    (torch.Size((2, 11, 10)), torch.Size((2, 11, 10))),
+    (torch.Size((2, 8, 11, 10)), RuntimeError)
+])
+def test_batched_linear_shape(input_shape, output_shape):
+    input = torch.ones(input_shape)
+    batched_linear = BatchedLinear(10, 10, 2)
+    assert batched_linear.weight.shape == torch.Size((2, 10, 10))
+    if output_shape is RuntimeError:
+        with pytest.raises(RuntimeError):
+            batched_linear.forward(input)
+    else:
+        output = batched_linear.forward(input)
+        assert output.shape == output_shape
+
+
+@pytest.mark.parametrize('input_shape,output_shape', [
+    (torch.Size((1, 10)), torch.Size((2, 1, 10))),
+    (torch.Size((2, 1, 10)), torch.Size((2, 1, 10))),
+])
+def test_batched_linear_output(input_shape, output_shape):
+    input = torch.ones(input_shape)
     batched_linear = BatchedLinear(10, 10, 2)
     batched_linear.weight.data.zero_()
     batched_linear.bias.data.zero_()
     batched_linear.weight.data[1] = batched_linear.weight.data[1] + 1.
     assert batched_linear.weight.shape == torch.Size((2, 10, 10))
     output = batched_linear.forward(input)
-    assert output.shape == torch.Size((2, 1, 10))
+    assert output.shape == output_shape
     assert_equal(output, torch.stack([torch.zeros(10), torch.ones(10) * 10]).unsqueeze(1))

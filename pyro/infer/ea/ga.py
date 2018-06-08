@@ -55,10 +55,7 @@ class GA(object):
     def _mutate(self, param_sites, elite):
         true_params = {}
         with torch.no_grad():
-            if isinstance(self.mutation_fns, dict):
-                mutfn = self.mutation_fns.get
-            else:
-                mutfn = self.mutation_fns
+            mutfn = self.mutation_fns
             for site, value in param_sites.items():
                 true_param = pyro.get_param_store().get_param(site).unconstrained()
                 true_param.zero_()
