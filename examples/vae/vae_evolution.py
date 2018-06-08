@@ -200,6 +200,9 @@ class PyroVAEImpl(VAE):
         with pyro.iarange('data', data.size(0), dim=-2):
             with pyro.iarange('zdim', 20, dim=-1):
                 z_mean, z_var = encoder.forward(data)
+                if self.num_particles and self.optim_type == 'ea':
+                    z_mean = z_mean.unsqueeze(1)
+                    z_var = z_var.unsqueeze(1)
                 pyro.sample('latent', dist.Normal(z_mean, z_var))
 
     def compute_loss_and_gradient(self, x):
