@@ -151,7 +151,10 @@ class Normal(torch.distributions.Normal, TorchDistributionMixin):
         validate_args = self.__dict__.get('validate_args')
         loc = self.loc.expand(batch_shape)
         scale = self.scale.expand(batch_shape)
-        return Normal(loc, scale, validate_args=validate_args)
+        n = Normal(loc, scale, validate_args=validate_args)
+        if not self.has_rsample:
+            n.has_rsample = False
+        return n
 
 
 class OneHotCategorical(torch.distributions.OneHotCategorical, TorchDistributionMixin):

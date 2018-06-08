@@ -289,6 +289,8 @@ def setup(args):
 
 def main(args):
     train_loader, test_loader = setup(args)
+    if args.optim == 'ea':
+        args.population_size = 1
     vae = PyroVAEImpl(args,
                       train_loader,
                       test_loader,
