@@ -14,43 +14,34 @@ class Parallelized_ELBO(Trace_ELBO):
     def __init__(self,
                  model,
                  guide,
-                 num_particles=None,
+                 num_particles=1,
                  num_chains=1,
                  max_iarange_nesting=float('inf'),
                  strict_enumeration_warning=True):
-        super(Parallelized_ELBO, self).__init__(num_particles, max_iarange_nesting, strict_enumeration_warning)
         self.model = model
         self.guide = guide
         self.num_chains = num_chains
+        self.num_particles = num_particles
+        self.max_iarange_nesting = max_iarange_nesting
         self.chain_dim = None
-        if num_chains > 1 or num_particles is not None:
-            self.model, self.guide = self._parallelize([self.model, self.guide])
+        self.model, self.guide = self._parallelize([self.model, self.guide])
+        super(Parallelized_ELBO, self).__init__(num_particles=self.num_particles,
+                                                max_iarange_nesting=self.max_iarange_nesting,
+                                                strict_enumeration_warning=strict_enumeration_warning)
 
     def _parallelize(self, fns):
-
-        def num_particles_parallelized(fn, dim):
+        def _parallelized(fn, dim):
             def parallel_model(*args, **kwargs):
-                with pyro.iarange("num_particles", self.num_particles, dim=dim):
-                    return fn(*args, **kwargs)
-
-            return parallel_model
-
-        def num_chains_parallelized(fn, dim):
-            def parallel_model(*args, **kwargs):
-                with pyro.iarange("num_chains", self.num_chains, dim=dim):
-                    return fn(*args, **kwargs)
-
+                with pyro.iarange("num_chains", self.num_chains, dim=dim-1):
+                    with pyro.iarange("num_particles", self.num_particles, dim=dim):
+                        return fn(*args, **kwargs)
             return parallel_model
 
         parallelized_fns = fns
-        if self.num_particles is not None:
-            self.max_iarange_nesting += 1
-            for i in range(len(parallelized_fns)):
-                parallelized_fns[i] = num_particles_parallelized(parallelized_fns[i], -self.max_iarange_nesting)
-
-        self.max_iarange_nesting += 1
+        dim = -(self.max_iarange_nesting + 1)
         for i in range(len(parallelized_fns)):
-            parallelized_fns[i] = num_chains_parallelized(parallelized_fns[i], -self.max_iarange_nesting)
+            parallelized_fns[i] = _parallelized(parallelized_fns[i], dim)
+        self.max_iarange_nesting += 2
         self.chain_dim = self.max_iarange_nesting
         return [poutine.broadcast(fn) for fn in parallelized_fns]
 
@@ -103,9 +94,8 @@ class Parallelized_ELBO(Trace_ELBO):
         Evaluates the ELBO with an estimator that uses num_particles many samples/particles.
         """
         model_trace, guide_trace = self._get_traces(model, guide, *args, **kwargs)
-        num_particles = self.num_particles if self.num_particles else 1
         elbo = (self.trace_log_prob(model_trace, self.chain_dim - 1) -
-                self.trace_log_prob(guide_trace, self.chain_dim - 1)) / num_particles
+                self.trace_log_prob(guide_trace, self.chain_dim - 1)) / self.num_particles
         if self.num_chains > 1:
             assert elbo.shape == torch.Size((self.num_chains,))
 
@@ -116,6 +106,3 @@ class Parallelized_ELBO(Trace_ELBO):
 
     def get_loss(self, *args, **kwargs):
         return self.loss(self.model, self.guide, *args, **kwargs)
-
-    def get_loss_conditioned_on(self, data, *args, **kwargs):
-        return self.loss(self.model, poutine.condition(self.guide, data=data))

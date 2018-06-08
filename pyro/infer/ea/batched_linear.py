@@ -37,6 +37,7 @@ class BatchedLinear(nn.Module):
         super(BatchedLinear, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
+        self.batches = batches
         self.weight = Parameter(torch.Tensor(batches, in_features, out_features))
         if bias:
             self.bias = Parameter(torch.Tensor(batches, 1, out_features))
@@ -57,6 +58,6 @@ class BatchedLinear(nn.Module):
         return ret
 
     def extra_repr(self):
-        return 'in_features={}, out_features={}, bias={}'.format(
-            self.in_features, self.out_features, self.bias is not None
+        return 'in_features={}, out_features={}, batches={}, bias={}'.format(
+            self.in_features, self.out_features, self.batches, self.bias is not None
         )

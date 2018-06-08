@@ -27,13 +27,11 @@ class GA(object):
                  mutation_fns,
                  population_size,
                  selection_size,
-                 num_particles=1,
                  inheritance_decay=1.):
         self.elbo = elbo
         self.population_size = population_size
         self.selection_size = selection_size
         self.mutation_fns = mutation_fns
-        self.num_particles = num_particles
         self.decay = inheritance_decay
         self.logger = logging.getLogger(__name__)
         self._reset()
@@ -104,12 +102,7 @@ class GA(object):
         if parent_idxs is not None:
             parent_idxs = torch.cat([torch.LongTensor([0]), parent_idxs])
         population = self._mutate(initial_candidates, self.elite)
-
-        losses = [self.evaluate_loss(*args, **kwargs).detach()]
-        if self.num_particles > 1:
-            for _ in range(self.num_particles-1):
-                losses.append(self.evaluate_loss(*args, **kwargs).detach())
-        losses = torch.stack(losses, dim=0).mean(dim=0)
+        losses = self.evaluate_loss(*args, **kwargs).detach()
         if self.parent_loss is not None:
             parent_losses = self.parent_loss[parent_idxs]
             losses = (1 - self.decay) * parent_losses + self.decay * losses
