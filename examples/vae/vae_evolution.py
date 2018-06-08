@@ -14,6 +14,7 @@ from torchvision.utils import save_image
 import pyro
 from pyro.contrib.examples import util
 import pyro.distributions as dist
+from pyro.distributions.testing import fakes
 from pyro.infer import Trace_ELBO, SVI
 from pyro.infer.ea.batched_linear import BatchedLinear
 
@@ -174,6 +175,11 @@ class PyroVAEImpl(VAE):
         self.decay_schedule = kwargs.pop('decay_schedule')
         self.user_inputs = kwargs.pop('user_inputs')
         self.mutation_val = self.decay_schedule[0][0]
+        self.reparam = kwargs.pop('reparam')
+        if self.reparam:
+            self.Normal = dist.Normal
+        else:
+            self.Normal = fakes.NonreparameterizedNormal
         self._t = 0
         self._t_prev = None
         self.optim_type = kwargs.pop('optim')
@@ -188,7 +194,7 @@ class PyroVAEImpl(VAE):
         decoder = pyro.module('decoder', self.vae_decoder)
         with pyro.iarange('data', data.size(0), dim=-2):
             with pyro.iarange('zdim', 20, dim=-1):
-                z = pyro.sample('latent', dist.Normal(data.new_tensor(0.), data.new_tensor(1.)))
+                z = pyro.sample('latent', self.Normal(data.new_tensor(0.), data.new_tensor(1.)))
                 img = decoder.forward(z)
             data = data.reshape(data.size(0), 784)
             pyro.sample('obs',
@@ -203,7 +209,7 @@ class PyroVAEImpl(VAE):
                 if self.num_particles and self.optim_type == 'ea':
                     z_mean = z_mean.unsqueeze(1)
                     z_var = z_var.unsqueeze(1)
-                pyro.sample('latent', dist.Normal(z_mean, z_var))
+                pyro.sample('latent', self.Normal(z_mean, z_var))
 
     def compute_loss_and_gradient(self, x):
         if self.mode == TRAIN:
@@ -223,7 +229,7 @@ class PyroVAEImpl(VAE):
 
     def mutation_fns(self, param):
         if self._t == self._t_prev:
-            return lambda x: dist.Normal(x, x.new_tensor(self.mutation_val)).sample()
+            return lambda x: self.Normal(x, x.new_tensor(self.mutation_val)).sample()
         if self.user_inputs and self._t % 400 == 0:
             decay = input("decay: ")
             mutation_val = input("mutation_val: ")
@@ -239,7 +245,7 @@ class PyroVAEImpl(VAE):
         self.mutation_val = decay * self.mutation_val
         print("mutation: {}".format(self.mutation_val))
         self._t_prev = self._t
-        return lambda x: dist.Normal(x, x.new_tensor(self.mutation_val)).sample()
+        return lambda x: self.Normal(x, x.new_tensor(self.mutation_val)).sample()
 
     def ea_optimizer(self):
         loss = Parallelized_ELBO(self.model,
@@ -255,7 +261,10 @@ class PyroVAEImpl(VAE):
 
     def svi_optimizer(self):
         optimizer = Adam({'lr': 0.001})
-        return SVI(self.model, self.guide, optimizer, loss=Trace_ELBO(), max_iarange_nesting=3)
+        return SVI(self.model,
+                   self.guide,
+                   optimizer,
+                   loss=Trace_ELBO(max_iarange_nesting=3, vectorize_particles=True, num_particles=self.num_particles))
 
 
 def setup(args):
@@ -284,6 +293,7 @@ def main(args):
                       train_loader,
                       test_loader,
                       optim=args.optim,
+                      reparam=args.reparam,
                       cuda=args.cuda,
                       inheritance_decay=args.inheritance_decay,
                       decay_schedule=list(zip([float(x) for x in args.mutation_schedule],
@@ -321,10 +331,12 @@ if __name__ == '__main__':
     parser.add_argument('--num-particles', nargs='?', default=30, type=int)
     parser.add_argument('--selection-size', default=10, type=int)
     parser.add_argument('--optim', default='svi', type=str)
+    parser.add_argument('--reparam', action='store_true')
     parser.add_argument('--skip-eval', action='store_true')
     parser.add_argument('--inheritance-decay', default=1., type=float)
     parser.add_argument('--test', action='store_true')
     parser.set_defaults(skip_eval=False)
+    parser.set_defaults(reparam=False)
     parser.set_defaults(cuda=False)
     parser.set_defaults(user_inputs=False)
     parser.set_defaults(test=False)
