@@ -324,11 +324,13 @@ if __name__ == '__main__':
     parser.add_argument('--skip-eval', action='store_true')
     parser.add_argument('--inheritance-decay', default=1., type=float)
     parser.add_argument('--test', action='store_true')
-    parser.set_defaults(decay_schedule=[0.999])
-    parser.set_defaults(mutation_schedule=[0.005])
     parser.set_defaults(skip_eval=False)
     parser.set_defaults(cuda=False)
     parser.set_defaults(user_inputs=False)
     parser.set_defaults(test=False)
     args = parser.parse_args()
+    if not args.decay_schedule:
+        args.decay_schedule = [0.999]
+    if not args.mutation_schedule:
+        args.mutation_schedule = [0.005]
     main(args)
