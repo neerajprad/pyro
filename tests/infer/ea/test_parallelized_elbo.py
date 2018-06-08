@@ -25,4 +25,4 @@ def test_parallel_elbo():
                              num_chains=5,
                              max_iarange_nesting=2,
                              strict_enumeration_warning=True)
-    print(elbo.get_loss_conditioned_on(params={}, data=data))
+    assert elbo.get_loss(data).shape == torch.Size((5,))

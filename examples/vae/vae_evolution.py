@@ -50,9 +50,7 @@ class Encoder(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        if x.shape[0] != self.batches:
-            x = x.expand(torch.Size((self.batches,)) + x.shape)
-        x = x.reshape(self.batches, -1, 784)
+        x = x.reshape(-1, 784)
         h1 = self.relu(self.fc1(x))
         return self.fc21(h1), torch.exp(self.fc22(h1))
 
@@ -60,6 +58,7 @@ class Encoder(nn.Module):
 # VAE Decoder network
 class Decoder(nn.Module):
     def __init__(self, batches):
+        self.batches = batches
         super(Decoder, self).__init__()
         self.fc3 = BatchedLinear(20, 400, batches)
         self.fc4 = BatchedLinear(400, 784, batches)
@@ -67,8 +66,10 @@ class Decoder(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, z):
+        out_shape = z.shape[:-1] + (784,)
+        z = z.reshape(self.batches, -1, 20)
         h3 = self.relu(self.fc3(z))
-        return self.sigmoid(self.fc4(h3))
+        return self.sigmoid(self.fc4(h3)).reshape(out_shape)
 
 
 @add_metaclass(ABCMeta)
@@ -185,23 +186,20 @@ class PyroVAEImpl(VAE):
 
     def model(self, data):
         decoder = pyro.module('decoder', self.vae_decoder)
-        with pyro.iarange('data', data.size(0), dim=-3):
-            with pyro.iarange('zdim', 20, dim=-2):
+        with pyro.iarange('data', data.size(0), dim=-2):
+            with pyro.iarange('zdim', 20, dim=-1):
                 z = pyro.sample('latent', dist.Normal(data.new_tensor(0.), data.new_tensor(1.)))
-                img = decoder.forward(z.squeeze(-1)).unsqueeze(-2)
-            with pyro.iarange('img_shape', 784, dim=-1):
-                data = data.reshape(data.size(0), 784).unsqueeze(-2)
-                pyro.sample('obs',
-                            dist.Bernoulli(img),
-                            obs=data)
+                img = decoder.forward(z)
+            data = data.reshape(data.size(0), 784)
+            pyro.sample('obs',
+                        dist.Bernoulli(img),
+                        obs=data)
 
     def guide(self, data):
         encoder = pyro.module('encoder', self.vae_encoder)
-        with pyro.iarange('data', data.size(0), dim=-3):
-            with pyro.iarange('zdim', 20, dim=-2):
+        with pyro.iarange('data', data.size(0), dim=-2):
+            with pyro.iarange('zdim', 20, dim=-1):
                 z_mean, z_var = encoder.forward(data)
-                z_mean = z_mean.unsqueeze(-1)
-                z_var = z_var.unsqueeze(-1)
                 pyro.sample('latent', dist.Normal(z_mean, z_var))
 
     def compute_loss_and_gradient(self, x):
@@ -244,10 +242,10 @@ class PyroVAEImpl(VAE):
         loss = Parallelized_ELBO(self.model,
                                  self.guide,
                                  num_chains=self.population_size,
-                                 max_iarange_nesting=3)
+                                 num_particles=self.num_particles,
+                                 max_iarange_nesting=2)
         return GA(loss,
                   self.mutation_fns,
-                  num_particles=self.num_particles,
                   population_size=self.population_size,
                   selection_size=self.selection_size,
                   inheritance_decay=self.inheritance_decay)
@@ -313,16 +311,18 @@ if __name__ == '__main__':
     parser.add_argument('--cuda', action='store_true')
     parser.add_argument('--batch-size', nargs='?', default=128, type=int)
     parser.add_argument('--rng-seed', nargs='?', default=0, type=int)
-    parser.add_argument('--num-particles', nargs='?', default=30, type=int)
     parser.add_argument('-d', '--decay-schedule', action='append')
     parser.add_argument('-m', '--mutation-schedule', action='append')
     parser.add_argument('--user-inputs', action='store_true')
-    parser.add_argument('--population-size', default=300, type=int)
-    parser.add_argument('--selection-size', default=30, type=int)
-    parser.add_argument('--optim', default='ea', type=str)
+    parser.add_argument('--population-size', default=100, type=int)
+    parser.add_argument('--num-particles', nargs='?', default=30, type=int)
+    parser.add_argument('--selection-size', default=10, type=int)
+    parser.add_argument('--optim', default='svi', type=str)
     parser.add_argument('--skip-eval', action='store_true')
     parser.add_argument('--inheritance-decay', default=1., type=float)
     parser.add_argument('--test', action='store_true')
+    parser.set_defaults(decay_schedule=[0.999])
+    parser.set_defaults(mutation_schedule=[0.005])
     parser.set_defaults(skip_eval=False)
     parser.set_defaults(cuda=False)
     parser.set_defaults(user_inputs=False)

@@ -3,6 +3,7 @@ import torch.nn as nn
 
 from pyro.infer.ea.batched_linear import BatchedLinear
 import pyro.distributions as dist
+from tests.common import assert_equal
 
 
 class Encoder(nn.Module):
@@ -36,7 +37,7 @@ class Decoder(nn.Module):
         return self.sigmoid(self.fc4(h3))
 
 
-def test_batched_linear():
+def test_batched_linear_vae_shapes():
     encoder = Encoder(40)
     decoder = Decoder(40)
     img = torch.randn(5, 28, 28)
@@ -44,3 +45,15 @@ def test_batched_linear():
     assert mu.shape == torch.Size((40, 5, 20))
     img = decoder.forward(dist.Normal(mu, sigma).sample())
     assert img.shape == torch.Size((40, 5, 784))
+
+
+def test_batched_linear_simple():
+    input = torch.ones(1, 10)
+    batched_linear = BatchedLinear(10, 10, 2)
+    batched_linear.weight.data.zero_()
+    batched_linear.bias.data.zero_()
+    batched_linear.weight.data[1] = batched_linear.weight.data[1] + 1.
+    assert batched_linear.weight.shape == torch.Size((2, 10, 10))
+    output = batched_linear.forward(input)
+    assert output.shape == torch.Size((2, 1, 10))
+    assert_equal(output, torch.stack([torch.zeros(10), torch.ones(10) * 10]).unsqueeze(1))
