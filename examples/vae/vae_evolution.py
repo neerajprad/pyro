@@ -84,8 +84,8 @@ class VAE(object):
         self.vae_encoder = Encoder(args.population_size)
         self.vae_decoder = Decoder(args.population_size)
         if cuda:
-            self.vae_encoder = self.vae_encoder.cuda()
-            self.vae_decoder = self.vae_decoder.cuda()
+            self.vae_encoder = nn.DataParallel(self.vae_encoder.cuda())
+            self.vae_decoder = nn.DataParallel(self.vae_decoder.cuda())
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.cuda = cuda
@@ -222,7 +222,6 @@ class PyroVAEImpl(VAE):
             else:
                 loss = self.optimizer.evaluate_loss(x) / self.population_size
         print("ELBO loss: {}".format(loss))
-        loss /= self.args.batch_size * 784
         return loss
 
     def mutation_fns(self, param):
@@ -312,14 +311,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='VAE using MNIST dataset')
     parser.add_argument('-n', '--num-epochs', nargs='?', default=2, type=int)
     parser.add_argument('--cuda', action='store_true')
-    parser.add_argument('--batch-size', nargs='?', default=128, type=int)
+    parser.add_argument('--batch-size', nargs='?', default=256, type=int)
     parser.add_argument('--rng-seed', nargs='?', default=0, type=int)
     parser.add_argument('-d', '--decay-schedule', action='append')
     parser.add_argument('-m', '--mutation-schedule', action='append')
     parser.add_argument('--population-size', default=100, type=int)
     parser.add_argument('--num-particles', nargs='?', default=30, type=int)
     parser.add_argument('--selection-size', default=10, type=int)
-    parser.add_argument('--optim', default='ea', type=str)
+    parser.add_argument('--optim', default='svi', type=str)
     parser.add_argument('--reparam', action='store_true')
     parser.add_argument('--skip-eval', action='store_true')
     parser.add_argument('--inheritance-decay', default=1., type=float)
