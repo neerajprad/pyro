@@ -49,11 +49,6 @@ class Encoder(nn.Module):
         self.fc22 = BatchedLinear(400, 20, batches)
         self.relu = nn.ReLU()
 
-    def _parallel(self):
-        self.fc1 = nn.DataParallel(self.fc1)
-        self.fc21 = nn.DataParallel(self.fc21)
-        self.fc22 = nn.DataParallel(self.fc22)
-
     def forward(self, x):
         x = x.reshape(-1, 784)
         h1 = self.relu(self.fc1(x))
@@ -69,10 +64,6 @@ class Decoder(nn.Module):
         self.fc4 = BatchedLinear(400, 784, batches)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
-
-    def _parallel(self):
-        self.fc3 = nn.DataParallel(self.fc3)
-        self.fc4 = nn.DataParallel(self.fc4)
 
     def forward(self, z):
         out_shape = z.shape[:-1] + (784,)
@@ -94,9 +85,7 @@ class VAE(object):
         self.vae_decoder = Decoder(args.population_size)
         if cuda:
             self.vae_encoder = self.vae_encoder.cuda()
-            self.vae_decoder._parallel()
             self.vae_decoder = self.vae_decoder.cuda()
-            self.vae_decoder._parallel()
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.cuda = cuda
