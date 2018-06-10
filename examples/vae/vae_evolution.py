@@ -44,9 +44,9 @@ class Encoder(nn.Module):
     def __init__(self, batches):
         super(Encoder, self).__init__()
         self.batches = batches
-        self.fc1 = nn.DataParallel(BatchedLinear(784, 400, batches))
-        self.fc21 = nn.DataParallel(BatchedLinear(400, 20, batches))
-        self.fc22 = nn.DataParallel(BatchedLinear(400, 20, batches))
+        self.fc1 = BatchedLinear(784, 400, batches)
+        self.fc21 = BatchedLinear(400, 20, batches)
+        self.fc22 = BatchedLinear(400, 20, batches)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -60,8 +60,8 @@ class Decoder(nn.Module):
     def __init__(self, batches):
         self.batches = batches
         super(Decoder, self).__init__()
-        self.fc3 = nn.DataParallel(BatchedLinear(20, 400, batches))
-        self.fc4 = nn.DataParallel(BatchedLinear(400, 784, batches))
+        self.fc3 = BatchedLinear(20, 400, batches)
+        self.fc4 = BatchedLinear(400, 784, batches)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
 
@@ -84,8 +84,8 @@ class VAE(object):
         self.vae_encoder = Encoder(args.population_size)
         self.vae_decoder = Decoder(args.population_size)
         if cuda:
-            self.vae_encoder = self.vae_encoder.cuda()
-            self.vae_decoder = self.vae_decoder.cuda()
+            self.vae_encoder = nn.DataParallel(self.vae_encoder.cuda())
+            self.vae_decoder = nn.DataParallel(self.vae_decoder.cuda())
         self.train_loader = train_loader
         self.test_loader = test_loader
         self.cuda = cuda
@@ -189,6 +189,7 @@ class PyroVAEImpl(VAE):
             self.optimizer = self.svi_optimizer()
 
     def model(self, data):
+        print(data.shape)
         decoder = pyro.module('decoder', self.vae_decoder)
         with pyro.iarange('data', data.size(0), dim=-2):
             with pyro.iarange('zdim', 20, dim=-1):
@@ -200,6 +201,7 @@ class PyroVAEImpl(VAE):
                             obs=data.reshape(-1, 784))
 
     def guide(self, data):
+        print(data.shape)
         encoder = pyro.module('encoder', self.vae_encoder)
         with pyro.iarange('data', data.size(0), dim=-2):
             with pyro.iarange('zdim', 20, dim=-1):
@@ -318,7 +320,7 @@ if __name__ == '__main__':
     parser.add_argument('--population-size', default=100, type=int)
     parser.add_argument('--num-particles', nargs='?', default=30, type=int)
     parser.add_argument('--selection-size', default=10, type=int)
-    parser.add_argument('--optim', default='ea', type=str)
+    parser.add_argument('--optim', default='svi', type=str)
     parser.add_argument('--reparam', action='store_true')
     parser.add_argument('--skip-eval', action='store_true')
     parser.add_argument('--inheritance-decay', default=1., type=float)
