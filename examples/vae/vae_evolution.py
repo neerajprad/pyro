@@ -16,6 +16,7 @@ import pyro.distributions as dist
 from pyro.distributions.testing import fakes
 from pyro.infer import Trace_ELBO, SVI
 from pyro.infer.ea.batched_linear import BatchedLinear
+from pyro.infer.ea.es import ES
 
 from pyro.infer.ea.ga import GA
 from pyro.infer.ea.parallelized_elbo import Parallelized_ELBO
@@ -185,6 +186,8 @@ class PyroVAEImpl(VAE):
         super(PyroVAEImpl, self).__init__(*args, **kwargs)
         if self.optim_type == 'ea':
             self.optimizer = self.ea_optimizer()
+        elif self.optim_type == 'es':
+            self.optimizer = self.es_optimizer()
         else:
             self.optimizer = self.svi_optimizer()
 
@@ -204,27 +207,27 @@ class PyroVAEImpl(VAE):
         with pyro.iarange('data', data.size(0), dim=-2):
             with pyro.iarange('zdim', 20, dim=-1):
                 z_mean, z_var = encoder.forward(data)
-                if self.optim_type == 'ea':
+                if self.optim_type != 'svi':
                     z_mean = z_mean.unsqueeze(1)
                     z_var = z_var.unsqueeze(1)
                 pyro.sample('latent', self.Normal(z_mean, z_var))
 
     def compute_loss_and_gradient(self, x):
         if self.mode == TRAIN:
-            if self.optim_type == 'ea':
+            if self.optim_type != 'svi':
                 loss = self.optimizer.step(x)
             else:
                 loss = self.optimizer.step(x) / self.population_size
             self._t += 1
         else:
-            if self.optim_type == 'ea':
+            if self.optim_type != 'svi':
                 loss = self.optimizer.evaluate_loss(x)[0]
             else:
                 loss = self.optimizer.evaluate_loss(x) / self.population_size
         print("ELBO loss: {}".format(loss))
         return loss
 
-    def mutation_fns(self, param):
+    def ea_mutation_fns(self, param):
         if self._t == self._t_prev:
             return lambda x: self.Normal(x, x.new_tensor(self.mutation_val)).sample()
         decay = 0.999
@@ -236,6 +239,22 @@ class PyroVAEImpl(VAE):
         self._t_prev = self._t
         return lambda x: self.Normal(x, x.new_tensor(self.mutation_val)).sample()
 
+    def es_mutation_fns(self, param):
+        if self._t == self._t_prev:
+            return lambda x: (self.mutation_val,
+                              self.Normal(x.new_zeros(x.shape),
+                                          x.new_tensor(self.mutation_val)).sample())
+        decay = 0.999
+        for mutation_val, decay in self.decay_schedule:
+            if self.mutation_val <= mutation_val:
+                decay = decay
+        self.mutation_val = decay * self.mutation_val
+        print("mutation: {}".format(self.mutation_val))
+        self._t_prev = self._t
+        return lambda x: (self.mutation_val,
+                          self.Normal(x.new_zeros(x.shape),
+                                      x.new_tensor(self.mutation_val)).sample())
+
     def ea_optimizer(self):
         loss = Parallelized_ELBO(self.model,
                                  self.guide,
@@ -243,10 +262,19 @@ class PyroVAEImpl(VAE):
                                  num_particles=self.num_particles,
                                  max_iarange_nesting=2)
         return GA(loss,
-                  self.mutation_fns,
+                  self.ea_mutation_fns,
                   population_size=self.population_size,
                   selection_size=self.selection_size,
                   inheritance_decay=self.inheritance_decay)
+
+    def es_optimizer(self):
+        loss = Parallelized_ELBO(self.model,
+                                 self.guide,
+                                 num_chains=self.population_size,
+                                 num_particles=self.num_particles,
+                                 max_iarange_nesting=2)
+        return ES(loss,
+                  self.es_mutation_fns)
 
     def svi_optimizer(self):
         optimizer = Adam({'lr': 0.001})
@@ -316,9 +344,9 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--decay-schedule', action='append')
     parser.add_argument('-m', '--mutation-schedule', action='append')
     parser.add_argument('--population-size', default=100, type=int)
-    parser.add_argument('--num-particles', nargs='?', default=30, type=int)
+    parser.add_argument('--num-particles', nargs='?', default=1, type=int)
     parser.add_argument('--selection-size', default=10, type=int)
-    parser.add_argument('--optim', default='svi', type=str)
+    parser.add_argument('--optim', default='es', type=str)
     parser.add_argument('--reparam', action='store_true')
     parser.add_argument('--skip-eval', action='store_true')
     parser.add_argument('--inheritance-decay', default=1., type=float)
