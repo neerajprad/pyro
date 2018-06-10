@@ -343,7 +343,7 @@ if __name__ == '__main__':
     parser.add_argument('--rng-seed', nargs='?', default=0, type=int)
     parser.add_argument('-d', '--decay-schedule', action='append')
     parser.add_argument('-m', '--mutation-schedule', action='append')
-    parser.add_argument('--population-size', default=100, type=int)
+    parser.add_argument('--population-size', default=10, type=int)
     parser.add_argument('--num-particles', nargs='?', default=1, type=int)
     parser.add_argument('--selection-size', default=10, type=int)
     parser.add_argument('--optim', default='es', type=str)

@@ -58,7 +58,7 @@ class ES(object):
                 true_param = pyro.get_param_store().get_param(site).unconstrained()
                 true_param.zero_()
                 if not copy:
-                    var[site], noise[site] = self.mutation_fns(site)(value)
+                    var[site], noise[site] = self.mutation_fns(site)(true_param)
                     mutated = value + noise[site]
                     true_param += mutated
                 else:
@@ -81,7 +81,7 @@ class ES(object):
 
         losses = self.evaluate_loss(*args, **kwargs).detach()
         for k, v in parents.items():
-            v.grad = -torch.stack([1/var[k] * noise[k] * losses[i] for i in range(len(losses))]).mean(0)
+            v.grad = -torch.stack([1/var[k] * noise[k][i] * losses[i] for i in range(len(losses))]).mean(0)
         self.optim.step()
         self.parents = parents
         self._mutate(parents, copy=True)
