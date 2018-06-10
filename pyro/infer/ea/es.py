@@ -21,10 +21,12 @@ class ES(object):
     """
     def __init__(self,
                  elbo,
-                 mutation_fns):
+                 mutation_fns,
+                 lr):
         self.elbo = elbo
         self.mutation_fns = mutation_fns
         self.logger = logging.getLogger(__name__)
+        self.lr = lr
         self._reset()
 
     def _reset(self):
@@ -72,16 +74,16 @@ class ES(object):
             population = {site["name"]: site["value"].unconstrained().detach().clone() for site in
                                   param_capture.trace.nodes.values()}
             parents = {k: v.mean(dim=0).requires_grad_(True) for k, v in population.items()}
-            self.optim = torch.optim.Adam(parents.values(), lr=1e-3)
+            self.optim = torch.optim.Adam(parents.values(), lr=self.lr)
         else:
-            parents = {k: v.detach().requires_grad_(True) for k,v in self.parents.items()}
+            parents = {k: v.detach().requires_grad_(True) for k, v in self.parents.items()}
         self.optim.zero_grad()
 
         noise, var = self._mutate(parents)
 
         losses = self.evaluate_loss(*args, **kwargs).detach()
         for k, v in parents.items():
-            v.grad = -torch.stack([1/var[k] * noise[k][i] * losses[i] for i in range(len(losses))]).mean(0)
+            v.grad = torch.stack([1/var[k] * noise[k][i] * losses[i] for i in range(len(losses))]).mean(0)
         self.optim.step()
         self.parents = parents
         self._mutate(parents, copy=True)

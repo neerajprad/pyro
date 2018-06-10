@@ -183,6 +183,7 @@ class PyroVAEImpl(VAE):
         self._t_prev = None
         self.optim_type = kwargs.pop('optim')
         self.inheritance_decay = kwargs.pop('inheritance_decay')
+        self.lr = kwargs.pop('lr')
         super(PyroVAEImpl, self).__init__(*args, **kwargs)
         if self.optim_type == 'ea':
             self.optimizer = self.ea_optimizer()
@@ -274,7 +275,8 @@ class PyroVAEImpl(VAE):
                                  num_particles=self.num_particles,
                                  max_iarange_nesting=2)
         return ES(loss,
-                  self.es_mutation_fns)
+                  self.es_mutation_fns,
+                  lr=self.lr)
 
     def svi_optimizer(self):
         optimizer = Adam({'lr': 0.001})
@@ -318,6 +320,7 @@ def main(args):
                       decay_schedule=list(zip([float(x) for x in args.mutation_schedule],
                                               [float(x) for x in args.decay_schedule])),
                       num_particles=args.num_particles,
+                      lr=args.lr,
                       batch_size=args.batch_size,
                       population_size=args.population_size,
                       selection_size=args.selection_size)
@@ -343,7 +346,7 @@ if __name__ == '__main__':
     parser.add_argument('--rng-seed', nargs='?', default=0, type=int)
     parser.add_argument('-d', '--decay-schedule', action='append')
     parser.add_argument('-m', '--mutation-schedule', action='append')
-    parser.add_argument('--population-size', default=10, type=int)
+    parser.add_argument('--population-size', default=100, type=int)
     parser.add_argument('--num-particles', nargs='?', default=1, type=int)
     parser.add_argument('--selection-size', default=10, type=int)
     parser.add_argument('--optim', default='es', type=str)
@@ -351,6 +354,7 @@ if __name__ == '__main__':
     parser.add_argument('--skip-eval', action='store_true')
     parser.add_argument('--inheritance-decay', default=1., type=float)
     parser.add_argument('--test-stability', action='store_true')
+    parser.add_argument('--lr', default=1e-3, type=float)
     parser.set_defaults(skip_eval=False)
     parser.set_defaults(reparam=False)
     parser.set_defaults(cuda=False)
