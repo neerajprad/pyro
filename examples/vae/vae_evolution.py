@@ -155,7 +155,7 @@ class VAE(object):
                            os.path.join(OUTPUT_DIR, 'reconstruction_' + str(epoch) + '.png'),
                            nrow=n)
 
-        print('Test set loss: {:.4f}'.format(test_loss))
+        print('Test set loss: {:.4f}'.format(test_loss / len(self.test_loader.dataset)))
 
 
 class PyroVAEImpl(VAE):
