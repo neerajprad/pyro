@@ -193,7 +193,7 @@ class PyroVAEImpl(VAE):
         decoder = pyro.module('decoder', self.vae_decoder)
         with pyro.iarange('data', data.size(0), dim=-2):
             z = pyro.sample('latent', dist.OneHotCategorical(data.new_ones(40) * 0.5))
-            img = decoder.forward(z)
+            img = decoder.forward(z).squeeze(-2)
             with pyro.iarange('components', 784, dim=-1):
                 pyro.sample('obs',
                             dist.Bernoulli(img),
@@ -203,6 +203,7 @@ class PyroVAEImpl(VAE):
         encoder = pyro.module('encoder', self.vae_encoder)
         with pyro.iarange('data', data.size(0), dim=-2):
             p = encoder.forward(data)
+            p = p.unsqueeze(-2)
             if self.optim_type != 'svi':
                 p = p.unsqueeze(1)
             pyro.sample('latent', dist.OneHotCategorical(p))
