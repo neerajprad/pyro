@@ -192,7 +192,7 @@ class PyroVAEImpl(VAE):
     def model(self, data):
         decoder = pyro.module('decoder', self.vae_decoder)
         with pyro.iarange('data', data.size(0), dim=-2):
-            z = pyro.sample('latent', dist.OneHotCategorical(torch.ones(40) * 0.5))
+            z = pyro.sample('latent', dist.OneHotCategorical(data.new_ones(40) * 0.5))
             img = decoder.forward(z)
             with pyro.iarange('components', 784, dim=-1):
                 pyro.sample('obs',
