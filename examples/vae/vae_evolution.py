@@ -340,7 +340,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='VAE using MNIST dataset')
-    parser.add_argument('-n', '--num-epochs', nargs='?', default=2, type=int)
+    parser.add_argument('-n', '--num-epochs', nargs='?', default=10, type=int)
     parser.add_argument('--cuda', action='store_true')
     parser.add_argument('--batch-size', nargs='?', default=256, type=int)
     parser.add_argument('--rng-seed', nargs='?', default=0, type=int)

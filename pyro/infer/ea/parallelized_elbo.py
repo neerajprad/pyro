@@ -25,7 +25,7 @@ class Parallelized_ELBO(Trace_ELBO):
         self.max_iarange_nesting = max_iarange_nesting
         self.chain_dim = None
         self.model, self.guide = self._parallelize([self.model, self.guide])
-        super(Parallelized_ELBO, self).__init__(num_particles=self.num_particles,
+        super(Parallelized_ELBO, self).__init__(num_particles=1,
                                                 max_iarange_nesting=self.max_iarange_nesting,
                                                 strict_enumeration_warning=strict_enumeration_warning)
 
