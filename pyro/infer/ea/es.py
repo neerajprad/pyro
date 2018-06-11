@@ -89,7 +89,6 @@ class ES(object):
             # v.grad = grad
             # Explicit grad:
             v -= self.lr * grad
-            print("$$", k, v, grad)
         # self.optim.step()
         self.parents = parents
         self._mutate(parents, copy=True)
