@@ -143,7 +143,7 @@ class VAE(object):
             if self.cuda:
                 x = x.cuda()
             with torch.no_grad():
-                recon_x = self.model_eval(x)
+                recon_x = self.model_eval(x)[0][0]
                 test_loss += self.compute_loss_and_gradient(x)
             if i == 0:
                 n = min(x.size(0), 8)
