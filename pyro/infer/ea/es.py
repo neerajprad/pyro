@@ -80,7 +80,7 @@ class ES(object):
             parents = {k: v.detach()  #.requires_grad_(True)
                        for k, v in self.parents.items()}
         # self.optim.zero_grad()
-        
+
         noise, var = self._mutate(parents)
 
         losses = self.evaluate_loss(*args, **kwargs).detach()
