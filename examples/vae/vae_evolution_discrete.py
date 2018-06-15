@@ -45,15 +45,18 @@ class Encoder(nn.Module):
     def __init__(self, batches):
         super(Encoder, self).__init__()
         self.batches = batches
-        self.fc1 = BatchedLinear(784, 400, batches)
-        self.fc2 = BatchedLinear(400, 40, batches)
+        self.fc1 = BatchedLinear(784, 512, batches)
+        self.fc2 = BatchedLinear(512, 256, batches)
+        self.fc3 = BatchedLinear(256, 200, batches)
         self.relu = nn.ReLU()
-        self.softmax = nn.Softmax()
+        self.softmax = nn.Softmax(dim=-1)
 
     def forward(self, x):
         x = x.reshape(-1, 784)
         h1 = self.relu(self.fc1(x))
-        return self.softmax(self.fc2(h1))
+        h2 = self.relu(self.fc2(h1))
+        out = self.fc3(h2)
+        return self.softmax(out.reshape(out.shape[:-1] + torch.Size([20, 10])))
 
 
 # VAE Decoder network
@@ -61,16 +64,18 @@ class Decoder(nn.Module):
     def __init__(self, batches):
         self.batches = batches
         super(Decoder, self).__init__()
-        self.fc3 = BatchedLinear(40, 400, batches)
-        self.fc4 = BatchedLinear(400, 784, batches)
+        self.fc4 = BatchedLinear(200, 256, batches)
+        self.fc5 = BatchedLinear(256, 512, batches)
+        self.fc6 = BatchedLinear(512, 784, batches)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
 
     def forward(self, z):
-        out_shape = z.shape[:-1] + (784,)
-        z = z.reshape(self.batches, -1, 40)
-        h3 = self.relu(self.fc3(z))
-        return self.sigmoid(self.fc4(h3)).reshape(out_shape)
+        out_shape = z.shape[:-2] + (784,)
+        z = z.reshape(self.batches, -1, 200)
+        h3 = self.relu(self.fc4(z))
+        h4 = self.relu(self.fc5(h3))
+        return self.sigmoid(self.fc6(h4)).reshape(out_shape)
 
 
 @add_metaclass(ABCMeta)
@@ -172,10 +177,14 @@ class PyroVAEImpl(VAE):
         self.decay_schedule = kwargs.pop('decay_schedule')
         self.mutation_val = self.decay_schedule[0][0]
         self.reparam = kwargs.pop('reparam')
+        self.tau0 = torch.tensor(1.0)
+        self.temp = self.tau0
+        self.min_temp = torch.tensor(0.5)
         if self.reparam:
-            self.Normal = dist.Normal
+            self.OneHotCategorical = \
+                lambda *a, **k: dist.RelaxedOneHotCategorical(self.temp, *a, **k)
         else:
-            self.Normal = fakes.NonreparameterizedNormal
+            self.OneHotCategorical = dist.OneHotCategorical
         self._t = 0
         self._t_prev = None
         self.optim_type = kwargs.pop('optim')
@@ -192,8 +201,9 @@ class PyroVAEImpl(VAE):
     def model(self, data):
         decoder = pyro.module('decoder', self.vae_decoder)
         with pyro.iarange('data', data.size(0), dim=-2):
-            z = pyro.sample('latent', dist.OneHotCategorical(data.new_ones(40) * 0.5))
-            img = decoder.forward(z).squeeze(-2)
+            with pyro.iarange('zdim', 20, dim=-1):
+                z = pyro.sample('latent', self.OneHotCategorical(data.new_ones(10)/10))
+                img = decoder.forward(z)
             with pyro.iarange('components', 784, dim=-1):
                 pyro.sample('obs',
                             dist.Bernoulli(img),
@@ -202,17 +212,40 @@ class PyroVAEImpl(VAE):
     def guide(self, data):
         encoder = pyro.module('encoder', self.vae_encoder)
         with pyro.iarange('data', data.size(0), dim=-2):
-            p = encoder.forward(data)
-            p = p.unsqueeze(-2)
-            if self.optim_type != 'svi':
-                p = p.unsqueeze(1)
-            pyro.sample('latent', dist.OneHotCategorical(p))
+            with pyro.iarange('zdim', 20, dim=-1):
+                z = encoder.forward(data)
+                if self.optim_type != 'svi':
+                    z = z.unsqueeze(1)
+                pyro.sample('latent', self.OneHotCategorical(z))
+    #
+    #
+    # def model(self, data):
+    #     decoder = pyro.module('decoder', self.vae_decoder)
+    #     with pyro.iarange('data', data.size(0), dim=-2):
+    #         z = pyro.sample('latent', self.OneHotCategorical(data.new_ones(40) * 0.5))
+    #         img = decoder.forward(z).squeeze(-2)
+    #         with pyro.iarange('components', 784, dim=-1):
+    #             pyro.sample('obs',
+    #                         dist.Bernoulli(img),
+    #                         obs=data.reshape(-1, 784))
+    #
+    # def guide(self, data):
+    #     encoder = pyro.module('encoder', self.vae_encoder)
+    #     with pyro.iarange('data', data.size(0), dim=-2):
+    #         p = encoder.forward(data)
+    #         p = p.unsqueeze(-2)
+    #         if self.optim_type != 'svi':
+    #             p = p.unsqueeze(1)
+    #         pyro.sample('latent', self.OneHotCategorical(p))
 
     def compute_loss_and_gradient(self, x):
         if self.mode == TRAIN:
             if self.optim_type != 'svi':
                 loss = self.optimizer.step(x)
             else:
+                if self.reparam:
+                    self.temp = max(self.temp * 0.9999, self.min_temp)
+                    print("temp: ", self.temp)
                 loss = self.optimizer.step(x) / self.population_size
             self._t += 1
         else:
@@ -335,7 +368,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='VAE using MNIST dataset')
-    parser.add_argument('-n', '--num-epochs', nargs='?', default=10, type=int)
+    parser.add_argument('-n', '--num-epochs', nargs='?', default=50, type=int)
     parser.add_argument('--cuda', action='store_true')
     parser.add_argument('--batch-size', nargs='?', default=256, type=int)
     parser.add_argument('--rng-seed', nargs='?', default=0, type=int)
@@ -351,7 +384,7 @@ if __name__ == '__main__':
     parser.add_argument('--test-stability', action='store_true')
     parser.add_argument('--lr', default=1e-3, type=float)
     parser.set_defaults(skip_eval=False)
-    parser.set_defaults(reparam=False)
+    parser.set_defaults(reparam=True)
     parser.set_defaults(cuda=False)
     parser.set_defaults(test=False)
     args = parser.parse_args()
