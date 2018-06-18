@@ -157,6 +157,7 @@ class VAE(object):
                            nrow=n)
 
         print('Test set loss: {:.4f}'.format(test_loss / len(self.test_loader.dataset)))
+        return test_loss / len(self.test_loader.dataset)
 
 
 class PyroVAEImpl(VAE):
@@ -332,10 +333,12 @@ def main(args):
         for param_name in pyro.get_param_store().get_all_param_names():
             param = pyro.get_param_store().get_param(param_name).unconstrained()
             param[1:].zero_()
-    for i in range(args.num_epochs):
-        vae.train(i)
-        if not args.skip_eval:
-            vae.test(i)
+    with open("test_optim_{}.txt", "w") as f:
+        for i in range(args.num_epochs):
+            vae.train(i)
+            if not args.skip_eval:
+                test_loss = vae.test(i)
+                f.write(test_loss)
 
 
 if __name__ == '__main__':
