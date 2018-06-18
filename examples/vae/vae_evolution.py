@@ -338,7 +338,7 @@ def main(args):
             vae.train(i)
             if not args.skip_eval:
                 test_loss = vae.test(i)
-                f.write(test_loss)
+                f.write(str(test_loss))
 
 
 if __name__ == '__main__':
