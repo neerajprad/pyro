@@ -333,12 +333,12 @@ def main(args):
         for param_name in pyro.get_param_store().get_all_param_names():
             param = pyro.get_param_store().get_param(param_name).unconstrained()
             param[1:].zero_()
-    with open("test_optim_{}.txt", "w") as f:
+    with open("test_optim_{}.txt".format(args.optim), "w") as f:
         for i in range(args.num_epochs):
             vae.train(i)
             if not args.skip_eval:
                 test_loss = vae.test(i)
-                f.write(str(test_loss))
+                f.write(str(test_loss) + "\n")
 
 
 if __name__ == '__main__':
