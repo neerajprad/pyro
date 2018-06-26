@@ -45,9 +45,9 @@ class Encoder(nn.Module):
     def __init__(self, batches):
         super(Encoder, self).__init__()
         self.batches = batches
-        self.fc1 = BatchedLinear(784, 400, batches)
-        self.fc21 = BatchedLinear(400, 20, batches)
-        self.fc22 = BatchedLinear(400, 20, batches)
+        self.fc1 = BatchedLinear(784, 40, batches)
+        self.fc21 = BatchedLinear(40, 5, batches)
+        self.fc22 = BatchedLinear(40, 5, batches)
         self.relu = nn.ReLU()
 
     def forward(self, x):
@@ -61,14 +61,14 @@ class Decoder(nn.Module):
     def __init__(self, batches):
         self.batches = batches
         super(Decoder, self).__init__()
-        self.fc3 = BatchedLinear(20, 400, batches)
-        self.fc4 = BatchedLinear(400, 784, batches)
+        self.fc3 = BatchedLinear(5, 40, batches)
+        self.fc4 = BatchedLinear(40, 784, batches)
         self.sigmoid = nn.Sigmoid()
         self.relu = nn.ReLU()
 
     def forward(self, z):
         out_shape = z.shape[:-1] + (784,)
-        z = z.reshape(self.batches, -1, 20)
+        z = z.reshape(self.batches, -1, 5)
         h3 = self.relu(self.fc3(z))
         return self.sigmoid(self.fc4(h3)).reshape(out_shape)
 
@@ -131,20 +131,22 @@ class VAE(object):
     def train(self, epoch):
         self.set_train(is_train=True)
         train_loss = 0
-        for batch_idx, (x, _) in enumerate(self.train_loader):
+        for batch_idx, (x, y) in enumerate(self.train_loader):
             if self.cuda:
                 x = x.cuda()
+            x = x[y == 8][:self.batch_size]
             loss = self.compute_loss_and_gradient(x)
             train_loss += loss
         print('====> Epoch: {} \nTraining loss: {:.4f}'.format(
-            epoch, train_loss / len(self.train_loader.dataset)))
+            epoch, train_loss / 500))
 
     def test(self, epoch):
         self.set_train(is_train=False)
         test_loss = 0
-        for i, (x, _) in enumerate(self.test_loader):
+        for i, (x, y) in enumerate(self.test_loader):
             if self.cuda:
                 x = x.cuda()
+            x = x[y == 8][:self.batch_size]
             with torch.no_grad():
                 recon_x = self.model_eval(x)[0][0]
                 test_loss += self.compute_loss_and_gradient(x)
@@ -156,7 +158,7 @@ class VAE(object):
                            os.path.join(OUTPUT_DIR, 'reconstruction_' + str(epoch) + '.png'),
                            nrow=n)
 
-        print('Test set loss: {:.4f}'.format(test_loss / len(self.test_loader.dataset)))
+        print('Test set loss: {:.4f}'.format(test_loss / 500))
         return test_loss / len(self.test_loader.dataset)
 
 
@@ -196,7 +198,7 @@ class PyroVAEImpl(VAE):
     def model(self, data):
         decoder = pyro.module('decoder', self.vae_decoder)
         with pyro.iarange('data', data.size(0), dim=-2):
-            with pyro.iarange('zdim', 20, dim=-1):
+            with pyro.iarange('zdim', 5, dim=-1):
                 z = pyro.sample('latent', self.Normal(data.new_tensor(0.), data.new_tensor(1.)))
                 img = decoder.forward(z)
             with pyro.iarange('components', 784, dim=-1):
@@ -207,7 +209,7 @@ class PyroVAEImpl(VAE):
     def guide(self, data):
         encoder = pyro.module('encoder', self.vae_encoder)
         with pyro.iarange('data', data.size(0), dim=-2):
-            with pyro.iarange('zdim', 20, dim=-1):
+            with pyro.iarange('zdim', 5, dim=-1):
                 z_mean, z_var = encoder.forward(data)
                 if self.optim_type != 'svi':
                     z_mean = z_mean.unsqueeze(1)
@@ -291,12 +293,12 @@ def setup(args):
     pyro.set_rng_seed(args.rng_seed)
     train_loader = util.get_data_loader(dataset_name='MNIST',
                                         data_dir=DATA_DIR,
-                                        batch_size=args.batch_size,
+                                        batch_size=60000,
                                         is_training_set=True,
                                         shuffle=True)
     test_loader = util.get_data_loader(dataset_name='MNIST',
                                        data_dir=DATA_DIR,
-                                       batch_size=args.batch_size,
+                                       batch_size=10000,
                                        is_training_set=False,
                                        shuffle=True)
     global OUTPUT_DIR
@@ -343,21 +345,21 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='VAE using MNIST dataset')
-    parser.add_argument('-n', '--num-epochs', nargs='?', default=10, type=int)
+    parser.add_argument('-n', '--num-epochs', nargs='?', default=50, type=int)
     parser.add_argument('--cuda', action='store_true')
-    parser.add_argument('--batch-size', nargs='?', default=256, type=int)
+    parser.add_argument('--batch-size', nargs='?', default=500, type=int)
     parser.add_argument('--rng-seed', nargs='?', default=0, type=int)
     parser.add_argument('-d', '--decay-schedule', action='append')
     parser.add_argument('-m', '--mutation-schedule', action='append')
     parser.add_argument('--population-size', default=100, type=int)
     parser.add_argument('--num-particles', nargs='?', default=1, type=int)
     parser.add_argument('--selection-size', default=10, type=int)
-    parser.add_argument('--optim', default='es', type=str)
+    parser.add_argument('--optim', default='svi', type=str)
     parser.add_argument('--reparam', action='store_true')
     parser.add_argument('--skip-eval', action='store_true')
     parser.add_argument('--inheritance-decay', default=1., type=float)
     parser.add_argument('--test-stability', action='store_true')
-    parser.add_argument('--lr', default=1e-3, type=float)
+    parser.add_argument('--lr', default=1e-2, type=float)
     parser.set_defaults(skip_eval=False)
     parser.set_defaults(reparam=False)
     parser.set_defaults(cuda=False)
