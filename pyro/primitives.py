@@ -118,7 +118,7 @@ class _Subsample(Distribution):
         if subsample_size is None or subsample_size > self.size:
             subsample_size = self.size
         if subsample_size == self.size:
-            result = torch.LongTensor(list(range(self.size)))
+            result = torch.arange(self.size)
         else:
             # torch.randperm does not have a CUDA implementation
             result = torch.randperm(self.size, device=torch.device('cpu'))[:self.subsample_size]
@@ -239,6 +239,8 @@ class iarange(object):
     extended discussion.
     """
     def __init__(self, name, size=None, subsample_size=None, subsample=None, dim=None, use_cuda=None):
+        size = torch.tensor(size).long() if isinstance(size, numbers.Number) else None
+        # subsample_size = torch.tensor(subsample_size).long() if isinstance(subsample_size, numbers.Number) else None
         self.name = name
         self.dim = dim
         self.size, self.subsample_size, self.subsample = _subsample(name, size, subsample_size, subsample, use_cuda)

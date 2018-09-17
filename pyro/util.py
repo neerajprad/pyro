@@ -46,6 +46,12 @@ def torch_isinf(x):
     return (x == float('inf')).any() or (x == -float('inf')).any()
 
 
+def scalar_equal(x, y):
+    if isinstance(x, numbers.Number) and isinstance(y, numbers.Number):
+        return x == y
+    return (x == y).all()
+
+
 def warn_if_nan(value, msg=""):
     """
     A convenient function to warn if a Tensor or its grad contains any nan,

@@ -1,5 +1,8 @@
 from __future__ import absolute_import, division, print_function
 
+import torch
+
+from pyro.util import scalar_equal
 from .messenger import Messenger
 
 
@@ -21,14 +24,14 @@ class BroadcastMessenger(Messenger):
         dist = msg["fn"]
         actual_batch_shape = getattr(dist, "batch_shape", None)
         if actual_batch_shape is not None:
-            target_batch_shape = [None if size == 1 else int(size)  # int() is required by jit
+            target_batch_shape = [None if scalar_equal(size, 1) else size
                                   for size in actual_batch_shape]
             for f in msg["cond_indep_stack"]:
-                if f.dim is None or f.size == -1:
+                if f.dim is None or scalar_equal(f.size, -1):
                     continue
                 assert f.dim < 0
                 target_batch_shape = [None] * (-f.dim - len(target_batch_shape)) + target_batch_shape
-                if target_batch_shape[f.dim] not in (None, f.size):
+                if target_batch_shape[f.dim] is not None and not scalar_equal(f.size, target_batch_shape[f.dim]):
                     raise ValueError("Shape mismatch inside iarange('{}') at site {} dim {}, {} vs {}".format(
                         f.name, msg['name'], f.dim, f.size, target_batch_shape[f.dim]))
                 target_batch_shape[f.dim] = f.size

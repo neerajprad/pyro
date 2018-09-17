@@ -10,6 +10,7 @@ from torch.distributions import constraints, kl_divergence
 import pyro
 import pyro.distributions as dist
 import pyro.ops.jit
+import pyro.poutine as poutine
 from pyro.infer import (SVI, JitTrace_ELBO, JitTraceEnum_ELBO, JitTraceGraph_ELBO, Trace_ELBO, TraceEnum_ELBO,
                         TraceGraph_ELBO)
 from pyro.optim import Adam
@@ -338,21 +339,22 @@ def test_beta_bernoulli(Elbo, vectorized):
 
 @pytest.mark.parametrize('Elbo', [
     Trace_ELBO,
-    xfail_param(JitTrace_ELBO, reason="https://github.com/uber/pyro/issues/1358"),
+    JitTrace_ELBO,
     TraceGraph_ELBO,
-    xfail_param(JitTraceGraph_ELBO, reason="https://github.com/uber/pyro/issues/1358"),
+    JitTraceGraph_ELBO,
     TraceEnum_ELBO,
-    xfail_param(JitTraceEnum_ELBO, reason="https://github.com/uber/pyro/issues/1358"),
+    JitTraceEnum_ELBO,
 ])
 def test_svi_irregular_batch_size(Elbo):
     pyro.clear_param_store()
 
+    @poutine.broadcast
     def model(data):
         loc = pyro.param("loc", constant(0.0))
         scale = pyro.param("scale", constant(1.0), constraint=constraints.positive)
         with pyro.iarange("data", data.shape[0]):
             pyro.sample("x",
-                        dist.Normal(loc, scale).expand([data.shape[0]]),
+                        dist.Normal(loc, scale),
                         obs=data)
 
     def guide(data):
