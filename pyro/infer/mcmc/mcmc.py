@@ -65,20 +65,21 @@ class _Worker(object):
                  args=None, kwargs=None):
         self.chain_id = chain_id
         self.trace_gen = _SingleSampler(kernel, num_samples=num_samples, warmup_steps=warmup_steps)
-        self.args = args if args is not None else []
+        args = args if args is not None else []
+        self.args = [x.clone() if isinstance(x, torch.Tensor) else x for x in args]
         self.kwargs = kwargs if kwargs is not None else {}
         self.rng_seed = torch.initial_seed()
         self.log_queue = log_queue
         self.result_queue = result_queue
         self.default_tensor_type = torch.Tensor().type()
 
-    def run(self, *args, **kwargs):
+    def run(self):
         pyro.set_rng_seed(self.chain_id + self.rng_seed)
         torch.set_default_tensor_type(self.default_tensor_type)
-        kwargs["logger_id"] = "CHAIN:{}".format(self.chain_id)
-        kwargs["log_queue"] = self.log_queue
+        self.kwargs["logger_id"] = "CHAIN:{}".format(self.chain_id)
+        self.kwargs["log_queue"] = self.log_queue
         try:
-            for sample in self.trace_gen._traces(*args, **kwargs):
+            for sample in self.trace_gen._traces(*self.args, **self.kwargs):
                 self.result_queue.put_nowait((self.chain_id, sample))
             self.result_queue.put_nowait((self.chain_id, None))
         except Exception as e:
@@ -123,10 +124,9 @@ class _ParallelSampler(TracePosterior):
         self.workers = []
         for i in range(self.num_chains):
             worker = _Worker(i + 1, self.result_queue, self.log_queue, self.kernel,
-                             self.num_samples[i], self.warmup_steps)
+                             self.num_samples[i], self.warmup_steps, args, kwargs)
             worker.daemon = True
-            self.workers.append(self.ctx.Process(name=str(i), target=worker.run,
-                                                 args=args, kwargs=kwargs))
+            self.workers.append(self.ctx.Process(name=str(i), target=worker.run))
 
     def terminate(self):
         if self.log_thread.is_alive():
