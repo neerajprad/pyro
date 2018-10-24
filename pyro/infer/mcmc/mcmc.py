@@ -65,8 +65,7 @@ class _Worker(object):
                  args=None, kwargs=None):
         self.chain_id = chain_id
         self.trace_gen = _SingleSampler(kernel, num_samples=num_samples, warmup_steps=warmup_steps)
-        args = args if args is not None else []
-        self.args = [x.clone() if isinstance(x, torch.Tensor) else x for x in args]
+        self.args = args if args is not None else []
         self.kwargs = kwargs if kwargs is not None else {}
         self.rng_seed = torch.initial_seed()
         self.log_queue = log_queue
@@ -76,10 +75,12 @@ class _Worker(object):
     def run(self):
         pyro.set_rng_seed(self.chain_id + self.rng_seed)
         torch.set_default_tensor_type(self.default_tensor_type)
-        self.kwargs["logger_id"] = "CHAIN:{}".format(self.chain_id)
-        self.kwargs["log_queue"] = self.log_queue
+        args = [x.clone() if isinstance(x, torch.Tensor) else x for x in self.args]
+        kwargs = self.kwargs
+        kwargs["logger_id"] = "CHAIN:{}".format(self.chain_id)
+        kwargs["log_queue"] = self.log_queue
         try:
-            for sample in self.trace_gen._traces(*self.args, **self.kwargs):
+            for sample in self.trace_gen._traces(*args, **kwargs):
                 self.result_queue.put_nowait((self.chain_id, sample))
             self.result_queue.put_nowait((self.chain_id, None))
         except Exception as e:
