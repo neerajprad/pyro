@@ -405,7 +405,8 @@ class HMC(TraceKernel):
             energy_proposal = self._energy(z_new, r_new)
             energy_current = self._energy(z, r)
         delta_energy = energy_proposal - energy_current
-        rand = pyro.sample("rand_t={}".format(self._t), dist.Uniform(torch.zeros(1), torch.ones(1)))
+        rand = pyro.sample("rand_t={}".format(self._t), dist.Uniform(delta_energy.new_tensor(0.),
+                                                                     delta_energy.new_tensor(1.)))
         if rand < (-delta_energy).exp():
             self._accept_cnt += 1
             z = z_new

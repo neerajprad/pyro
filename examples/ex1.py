@@ -18,5 +18,5 @@ def model():
 
 if __name__ == "__main__":
     hmc_kernel = HMC(model, trajectory_length=1)
-    mcmc_run = MCMC(hmc_kernel, num_samples=800, warmup_steps=500).run()
+    mcmc_run = MCMC(hmc_kernel, num_samples=800, warmup_steps=500, num_chains=2).run()
     posterior = EmpiricalMarginal(mcmc_run, sites='p_latent')
