@@ -161,11 +161,11 @@ class _ParallelSampler(TracePosterior):
                     chain_id, val = self.result_queue.get_nowait()
                 # This can happen when the worker process has terminated.
                 # See https://github.com/pytorch/pytorch/pull/5380 for motivation.
-                except socket.error as e:
-                    if getattr(e, "errno", None) == errno.ENOENT:
-                        pass
-                    else:
-                        raise e
+                # except socket.error as e:
+                #     if getattr(e, "errno", None) == errno.ENOENT:
+                #         pass
+                #     else:
+                #         raise e
                 except queue.Empty:
                     continue
                 if isinstance(val, Exception):
