@@ -64,7 +64,7 @@ def logger_thread(log_queue, warmup_steps, num_samples, num_chains):
 
 class _Worker(object):
     def __init__(self, chain_id, result_queue, log_queue,
-                 kernel, num_samples, warmup_steps=0,
+                 kernel, num_samples, warmup_steps, done,
                  args=None, kwargs=None):
         self.chain_id = chain_id
         self.trace_gen = _SingleSampler(kernel, num_samples=num_samples, warmup_steps=warmup_steps)
@@ -72,6 +72,7 @@ class _Worker(object):
         self.kwargs = kwargs if kwargs is not None else {}
         self.rng_seed = torch.initial_seed()
         self.log_queue = log_queue
+        self.done = done
         self.result_queue = result_queue
         self.default_tensor_type = torch.Tensor().type()
 
@@ -86,6 +87,7 @@ class _Worker(object):
             for sample in self.trace_gen._traces(*args, **kwargs):
                 self.result_queue.put_nowait((self.chain_id, sample))
             self.result_queue.put_nowait((self.chain_id, None))
+            self.done.wait()
         except Exception as e:
             self.trace_gen.logger.exception(e)
             self.result_queue.put_nowait((self.chain_id, e))
@@ -104,13 +106,14 @@ class _ParallelSampler(TracePosterior):
         self.num_chains = num_chains
         self.workers = []
         self.ctx = mp
+        self.done = self.ctx.Event()
         if mp_context:
             if six.PY2:
                 raise ValueError("multiprocessing.get_context() is "
                                  "not supported in Python 2.")
             self.ctx = mp.get_context(mp_context)
-        self.result_queue = self.ctx.Manager().Queue()
-        self.log_queue = self.ctx.Manager().Queue()
+        self.result_queue = self.ctx.Queue()
+        self.log_queue = self.ctx.Queue()
         self.logger = initialize_logger(logging.getLogger("pyro.infer.mcmc"),
                                         "MAIN", log_queue=self.log_queue)
         # initialize number of samples per chain
@@ -128,11 +131,13 @@ class _ParallelSampler(TracePosterior):
         self.workers = []
         for i in range(self.num_chains):
             worker = _Worker(i + 1, self.result_queue, self.log_queue, self.kernel,
-                             self.num_samples[i], self.warmup_steps, args, kwargs)
+                             self.num_samples[i], self.warmup_steps, self.done,
+                             args, kwargs)
             worker.daemon = True
             self.workers.append(self.ctx.Process(name=str(i), target=worker.run))
 
     def terminate(self):
+        self.done.set()
         if self.log_thread.is_alive():
             self.log_queue.put_nowait(None)
             self.log_thread.join(timeout=1)
