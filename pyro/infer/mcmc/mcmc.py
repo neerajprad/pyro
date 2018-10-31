@@ -106,7 +106,7 @@ class _ParallelSampler(TracePosterior):
         self.num_chains = num_chains
         self.workers = []
         self.ctx = mp
-        self.done = None
+        self.done = []  # signal from main process to shut down worker
         if mp_context:
             if six.PY2:
                 raise ValueError("multiprocessing.get_context() is "
@@ -129,17 +129,19 @@ class _ParallelSampler(TracePosterior):
 
     def init_workers(self, *args, **kwargs):
         self.workers = []
-        self.done = self.ctx.Event()
         for i in range(self.num_chains):
+            done_sig = self.ctx.Event()
+            self.done.append(done_sig)
             worker = _Worker(i + 1, self.result_queue, self.log_queue, self.kernel,
-                             self.num_samples[i], self.warmup_steps, self.done,
+                             self.num_samples[i], self.warmup_steps, done_sig,
                              args, kwargs)
             worker.daemon = True
             self.workers.append(self.ctx.Process(name=str(i), target=worker.run))
 
     def terminate(self):
-        if self.done:
-            self.done.set()
+        for done_sig in self.done:
+            if not done_sig.is_set():
+                done_sig.set()
         if self.log_thread.is_alive():
             self.log_queue.put_nowait(None)
             self.log_thread.join(timeout=1)
@@ -161,13 +163,6 @@ class _ParallelSampler(TracePosterior):
             while active_workers:
                 try:
                     chain_id, val = self.result_queue.get_nowait()
-                # This can happen when the worker process has terminated.
-                # See https://github.com/pytorch/pytorch/pull/5380 for motivation.
-                # except socket.error as e:
-                #     if getattr(e, "errno", None) == errno.ENOENT:
-                #         pass
-                #     else:
-                #         raise e
                 except queue.Empty:
                     continue
                 if isinstance(val, Exception):
@@ -176,6 +171,7 @@ class _ParallelSampler(TracePosterior):
                 elif val is not None:
                     yield val
                 else:
+                    self.done[chain_id - 1].set()
                     active_workers -= 1
         finally:
             self.terminate()

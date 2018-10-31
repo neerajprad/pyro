@@ -160,7 +160,7 @@ def summary(traces, sites, player_names, transforms={}):
     Return summarized statistics for each of the ``sites`` in the
     traces corresponding to the approximate posterior.
     """
-    marginal = EmpiricalMarginal(traces, sites).get_samples_and_weights()[0].numpy()
+    marginal = EmpiricalMarginal(traces, sites).get_samples_and_weights()[0].cpu().numpy()
     site_stats = {}
     for i in range(marginal.shape[1]):
         site_name = sites[i]
