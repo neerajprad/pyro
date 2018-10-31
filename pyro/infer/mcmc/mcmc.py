@@ -106,7 +106,7 @@ class _ParallelSampler(TracePosterior):
         self.num_chains = num_chains
         self.workers = []
         self.ctx = mp
-        self.done = self.ctx.Event()
+        self.done = None
         if mp_context:
             if six.PY2:
                 raise ValueError("multiprocessing.get_context() is "
@@ -129,6 +129,7 @@ class _ParallelSampler(TracePosterior):
 
     def init_workers(self, *args, **kwargs):
         self.workers = []
+        self.done = self.ctx.Event()
         for i in range(self.num_chains):
             worker = _Worker(i + 1, self.result_queue, self.log_queue, self.kernel,
                              self.num_samples[i], self.warmup_steps, self.done,
@@ -137,7 +138,8 @@ class _ParallelSampler(TracePosterior):
             self.workers.append(self.ctx.Process(name=str(i), target=worker.run))
 
     def terminate(self):
-        self.done.set()
+        if self.done:
+            self.done.set()
         if self.log_thread.is_alive():
             self.log_queue.put_nowait(None)
             self.log_thread.join(timeout=1)
@@ -150,12 +152,12 @@ class _ParallelSampler(TracePosterior):
         # when the main process terminates.
         sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
         self.init_workers(*args, **kwargs)
-        # restore original handler
-        signal.signal(signal.SIGINT, sigint_handler)
         active_workers = self.num_chains
         try:
             for w in self.workers:
                 w.start()
+            # restore original handler
+            signal.signal(signal.SIGINT, sigint_handler)
             while active_workers:
                 try:
                     chain_id, val = self.result_queue.get_nowait()
