@@ -7,6 +7,7 @@ from six import add_metaclass
 
 import pyro.poutine as poutine
 from pyro.distributions import Categorical, Empirical
+from pyro.ops.stats import split_gelman_rubin, effective_sample_size
 
 
 class EmpiricalMarginal(Empirical):
@@ -47,12 +48,15 @@ class TracePosterior(object):
     This is designed to be used by other utility classes like `EmpiricalMarginal`,
     that need access to the collected execution traces.
     """
-    def __init__(self):
+    def __init__(self, num_chains=1):
+        self.num_chains = num_chains
         self._reset()
 
     def _reset(self):
         self.log_weights = []
         self.exec_traces = []
+        # For each chain, store sample indices that correspond to the chain
+        self.idxs_by_chain = []
         self._categorical = None
 
     @abstractmethod
@@ -65,7 +69,7 @@ class TracePosterior(object):
         raise NotImplementedError("inference algorithm must implement _traces")
 
     def __call__(self, *args, **kwargs):
-        random_idx = self._categorical.sample()
+        random_idx = self.idxs_by_chain[:][self._categorical.sample()]
         trace = self.exec_traces[random_idx].copy()
         for name in trace.observation_nodes:
             trace.remove_node(name)
@@ -81,11 +85,38 @@ class TracePosterior(object):
         """
         self._reset()
         with poutine.block():
-            for tr, logit in self._traces(*args, **kwargs):
+            for i, vals in enumerate(self._traces(*args, **kwargs)):
+                if self.num_chains > 1:
+                    tr, logit, chain_id = vals
+                    assert chain_id < self.num_chains
+                else:
+                    tr, logit = vals
+                    chain_id = 0
                 self.exec_traces.append(tr)
                 self.log_weights.append(logit)
+                self.ids_by_chain[chain_id].append(i)
         self._categorical = Categorical(logits=torch.tensor(self.log_weights))
         return self
+
+    def diagnostics(self, sites=None):
+        if sites is None:
+            assert len(self.exec_traces) > 0
+            sites = self.exec_traces[0].stochastic_nodes()
+        diagnostics = {}
+        for site in sites:
+            marginal, weights = EmpiricalMarginal(self, sites=[site]).get_samples_and_weights()
+            if weights.max() != weights.min():
+                raise ValueError("Diagnostics not implemented for differently weighted samples.")
+            chain_samples = []
+            for idxs in self.idxs_by_chain:
+                sample_idxs = torch.tensor(idxs, dtype=torch.int64, device=marginal.device())
+                chain_samples.append(marginal[sample_idxs])
+            chain_samples = torch.stack(chain_samples)
+            diagnostics[site] = {
+                "n_eff": effective_sample_size(chain_samples),
+                "r_hat": split_gelman_rubin(chain_samples),
+            }
+        return diagnostics
 
 
 class TracePredictive(TracePosterior):

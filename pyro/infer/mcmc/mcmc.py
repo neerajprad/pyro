@@ -8,7 +8,7 @@ import socket
 import sys
 import threading
 import warnings
-from collections import OrderedDict, deque
+from collections import OrderedDict
 
 import six
 from six.moves import queue
@@ -26,12 +26,12 @@ def logger_thread(log_queue, warmup_steps, num_samples, num_chains):
     Logging thread that asynchronously consumes logging events from `log_queue`,
     and handles them appropriately.
     """
-    progress_bars = [initialize_progbar(warmup_steps, s, pos=i)
-                     for i, s in enumerate(num_samples)]
+    progress_bars = [initialize_progbar(warmup_steps, num_samples, pos=i)
+                     for i in range(num_chains)]
     logger = logging.getLogger(__name__)
     logger.propagate = False
     logger.addHandler(TqdmHandler())
-    num_samples = [0] * len(num_samples)
+    num_samples = [0] * num_chains
     try:
         while True:
             try:
@@ -97,7 +97,6 @@ class _ParallelSampler(TracePosterior):
         self.kernel = kernel
         self.warmup_steps = warmup_steps
         self.num_chains = num_chains
-        self.chain_indices = None
         self.workers = []
         self.ctx = mp
         if mp_context:
@@ -109,8 +108,7 @@ class _ParallelSampler(TracePosterior):
         self.log_queue = self.ctx.Manager().Queue()
         self.logger = initialize_logger(logging.getLogger("pyro.infer.mcmc"),
                                         "MAIN", log_queue=self.log_queue)
-        # initialize number of samples per chain
-        self.num_samples = [num_samples] * num_chains
+        self.num_samples = num_samples
         self.log_thread = threading.Thread(target=logger_thread,
                                            args=(self.log_queue, self.warmup_steps,
                                                  self.num_samples, self.num_chains))
@@ -121,7 +119,7 @@ class _ParallelSampler(TracePosterior):
         self.workers = []
         for i in range(self.num_chains):
             worker = _Worker(i + 1, self.result_queue, self.log_queue, self.kernel,
-                             self.num_samples[i], self.warmup_steps)
+                             self.num_samples, self.warmup_steps)
             worker.daemon = True
             self.workers.append(self.ctx.Process(name=str(i), target=worker.run,
                                                  args=args, kwargs=kwargs))
@@ -145,7 +143,7 @@ class _ParallelSampler(TracePosterior):
         finally:
             self.chain_indices = torch.tensor(chain_indices)  # num_chains x num_samples
 
-    def _chain_traces(self, *args, **kwargs):
+    def _traces(self, *args, **kwargs):
         # Ignore sigint in worker processes; they will be shut down
         # when the main process terminates.
         sigint_handler = signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -153,11 +151,6 @@ class _ParallelSampler(TracePosterior):
         # restore original handler
         signal.signal(signal.SIGINT, sigint_handler)
         active_workers = self.num_chains
-        # To yield a deterministic ordering, we hold intermediate traces
-        # from each of the workers in its own queue in `results_buffer`
-        # and yield these in a round robin fashion.
-        buffer_idx = 0
-        results_buffer = [deque() for _ in range(self.num_chains)]
         try:
             for w in self.workers:
                 w.start()
@@ -176,22 +169,10 @@ class _ParallelSampler(TracePosterior):
                 if isinstance(val, Exception):
                     # Exception trace is already logged by worker.
                     raise val
-                if val is None:
+                if val is not None:
+                    yield val, chain_id
+                else:
                     active_workers -= 1
-                else:
-                    results_buffer[chain_id - 1].append(val)
-                while results_buffer[buffer_idx]:
-                    yield results_buffer[buffer_idx].popleft(), buffer_idx
-                    buffer_idx = (buffer_idx + 1) % self.num_chains
-            # empty out the results buffer
-            non_empty_buffers = set(range(self.num_chains))
-            while non_empty_buffers:
-                if results_buffer[buffer_idx]:
-                    yield results_buffer[buffer_idx].popleft(), buffer_idx
-                else:
-                    if buffer_idx in non_empty_buffers:
-                        non_empty_buffers.remove(buffer_idx)
-                buffer_idx = (buffer_idx + 1) % self.num_chains
         finally:
             self.terminate()
 
@@ -231,7 +212,7 @@ class _SingleSampler(TracePosterior):
             if progress_bar:
                 progress_bar.set_description("Sample")
             for trace in self._gen_samples(self.num_samples, trace):
-                yield (trace, 1.0)
+                yield trace, 1.0, 0  # (trace, weight, chain_id)
         self.kernel.cleanup()
 
 
@@ -266,9 +247,9 @@ class MCMC(TracePosterior):
     """
     def __init__(self, kernel, num_samples, warmup_steps=0,
                  num_chains=1, mp_context=None):
+        super(MCMC, self).__init__(num_chains=num_chains)
         self.warmup_steps = warmup_steps if warmup_steps is not None else num_samples // 2  # Stan
         self.num_samples = num_samples
-        self.num_chains = num_chains
         if num_chains > 1:
             cpu_count = mp.cpu_count()
             if num_chains > cpu_count:
@@ -278,7 +259,6 @@ class MCMC(TracePosterior):
                                             num_chains, mp_context)
         else:
             self.sampler = _SingleSampler(kernel, num_samples, warmup_steps)
-        super(MCMC, self).__init__()
 
     def _traces(self, *args, **kwargs):
         for sample in self.sampler._traces(*args, **kwargs):
