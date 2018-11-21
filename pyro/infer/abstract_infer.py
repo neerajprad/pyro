@@ -1,13 +1,14 @@
 from __future__ import absolute_import, division, print_function
 
 from abc import ABCMeta, abstractmethod
+from collections import OrderedDict
 
 import torch
 from six import add_metaclass
 
 import pyro.poutine as poutine
 from pyro.distributions import Categorical, Empirical
-from pyro.ops.stats import split_gelman_rubin, effective_sample_size
+import pyro.ops.stats as stats
 
 
 class EmpiricalMarginal(Empirical):
@@ -56,7 +57,7 @@ class TracePosterior(object):
         self.log_weights = []
         self.exec_traces = []
         # For each chain, store sample indices that correspond to the chain
-        self.idxs_by_chain = []
+        self.idxs_by_chain = [[] for _ in range(self.num_chains)]
         self._categorical = None
 
     @abstractmethod
@@ -69,8 +70,13 @@ class TracePosterior(object):
         raise NotImplementedError("inference algorithm must implement _traces")
 
     def __call__(self, *args, **kwargs):
-        random_idx = self.idxs_by_chain[:][self._categorical.sample()]
-        trace = self.exec_traces[random_idx].copy()
+        # To ensure deterministic sampling in the presence of multiple chains,
+        # we get the index from ``idxs_by_chain`` instead of sampling from
+        # the marginal directly.
+        random_idx = self._categorical.sample().item()
+        chain_idx, sample_idx = random_idx % self.num_chains, random_idx // self.num_chains
+        sample_idx = self.idxs_by_chain[chain_idx][sample_idx]
+        trace = self.exec_traces[sample_idx].copy()
         for name in trace.observation_nodes:
             trace.remove_node(name)
         return trace
@@ -86,36 +92,41 @@ class TracePosterior(object):
         self._reset()
         with poutine.block():
             for i, vals in enumerate(self._traces(*args, **kwargs)):
-                if self.num_chains > 1:
-                    tr, logit, chain_id = vals
-                    assert chain_id < self.num_chains
-                else:
-                    tr, logit = vals
-                    chain_id = 0
+                tr, logit, chain_id = vals
                 self.exec_traces.append(tr)
                 self.log_weights.append(logit)
-                self.ids_by_chain[chain_id].append(i)
+                self.idxs_by_chain[chain_id].append(i)
         self._categorical = Categorical(logits=torch.tensor(self.log_weights))
         return self
 
     def diagnostics(self, sites=None):
+        """
+        Compute and return diagnostics for the given latent ``sites``. If ``None`` given,
+        this is inferred from the trace.
+
+        :param list sites: List of sites to compute diagnostics on.
+        :return: Diagnostics keyed by site names.
+        :rtype: OrderedDict.
+        """
         if sites is None:
             assert len(self.exec_traces) > 0
             sites = self.exec_traces[0].stochastic_nodes()
         diagnostics = {}
+        if self.num_chains == 1:
+            return diagnostics
         for site in sites:
-            marginal, weights = EmpiricalMarginal(self, sites=[site]).get_samples_and_weights()
+            marginal, weights = EmpiricalMarginal(self, site).get_samples_and_weights()
             if weights.max() != weights.min():
                 raise ValueError("Diagnostics not implemented for differently weighted samples.")
             chain_samples = []
             for idxs in self.idxs_by_chain:
-                sample_idxs = torch.tensor(idxs, dtype=torch.int64, device=marginal.device())
+                sample_idxs = torch.tensor(idxs, dtype=torch.int64, device=marginal.device)
                 chain_samples.append(marginal[sample_idxs])
             chain_samples = torch.stack(chain_samples)
-            diagnostics[site] = {
-                "n_eff": effective_sample_size(chain_samples),
-                "r_hat": split_gelman_rubin(chain_samples),
-            }
+            diagnostics[site] = OrderedDict([
+                ("n_eff", stats.effective_sample_size(chain_samples)),
+                ("r_hat", stats.split_gelman_rubin(chain_samples))
+            ])
         return diagnostics
 
 
@@ -144,4 +155,4 @@ class TracePredictive(TracePosterior):
         for _ in range(self.num_samples):
             model_trace = self.posterior()
             replayed_trace = poutine.trace(poutine.replay(self.model, model_trace)).get_trace(*args, **kwargs)
-            yield (replayed_trace, 0.)
+            yield (replayed_trace, 0., 0)

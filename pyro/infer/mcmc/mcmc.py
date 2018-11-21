@@ -43,7 +43,7 @@ def logger_thread(log_queue, warmup_steps, num_samples, num_chains):
             metadata, msg = record.getMessage().split("]", 1)
             _, msg_type, logger_id = metadata[1:].split()
             if msg_type == DIAGNOSTIC_MSG:
-                pbar_pos = int(logger_id.split(":")[-1]) - 1
+                pbar_pos = int(logger_id.split(":")[-1])
                 num_samples[pbar_pos] += 1
                 if num_samples[pbar_pos] == warmup_steps:
                     progress_bars[pbar_pos].set_description("Sample [{}]".format(pbar_pos + 1))
@@ -78,8 +78,8 @@ class _Worker(object):
         kwargs["logger_id"] = "CHAIN:{}".format(self.chain_id)
         kwargs["log_queue"] = self.log_queue
         try:
-            for sample in self.trace_gen._traces(*args, **kwargs):
-                self.result_queue.put_nowait((self.chain_id, sample))
+            for tr, weight, _ in self.trace_gen._traces(*args, **kwargs):
+                self.result_queue.put_nowait((self.chain_id, (tr, weight)))
             self.result_queue.put_nowait((self.chain_id, None))
         except Exception as e:
             self.trace_gen.logger.exception(e)
@@ -118,7 +118,7 @@ class _ParallelSampler(TracePosterior):
     def init_workers(self, *args, **kwargs):
         self.workers = []
         for i in range(self.num_chains):
-            worker = _Worker(i + 1, self.result_queue, self.log_queue, self.kernel,
+            worker = _Worker(i, self.result_queue, self.log_queue, self.kernel,
                              self.num_samples, self.warmup_steps)
             worker.daemon = True
             self.workers.append(self.ctx.Process(name=str(i), target=worker.run,
@@ -131,17 +131,6 @@ class _ParallelSampler(TracePosterior):
         for w in self.workers:
             if w.is_alive():
                 w.terminate()
-
-    def _traces(self, *args, **kwargs):
-        chain_indices = [[] for _ in range(self.num_chains)]
-        try:
-            index = 0
-            for (trace, logit), chain in self._chain_traces(*args, **kwargs):
-                chain_indices[chain].append(index)
-                yield trace, logit
-                index += 1
-        finally:
-            self.chain_indices = torch.tensor(chain_indices)  # num_chains x num_samples
 
     def _traces(self, *args, **kwargs):
         # Ignore sigint in worker processes; they will be shut down
@@ -170,7 +159,8 @@ class _ParallelSampler(TracePosterior):
                     # Exception trace is already logged by worker.
                     raise val
                 if val is not None:
-                    yield val, chain_id
+                    trace, weight = val
+                    yield trace, weight, chain_id
                 else:
                     active_workers -= 1
         finally:
