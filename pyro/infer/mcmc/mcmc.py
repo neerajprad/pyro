@@ -81,6 +81,7 @@ class _Worker(object):
     def run(self, *args, **kwargs):
         pyro.set_rng_seed((self.chain_id + self.rng_seed) % MAX_SEED)
         torch.set_default_tensor_type(self.default_tensor_type)
+        args = [args.clone() if isinstance(arg, torch.Tensor) else arg for arg in args]
         kwargs["logger_id"] = "CHAIN:{}".format(self.chain_id)
         kwargs["log_queue"] = self.log_queue
         try:
