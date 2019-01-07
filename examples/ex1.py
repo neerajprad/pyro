@@ -3,10 +3,9 @@ import pyro
 import pyro.distributions as dist
 from pyro.infer.mcmc import HMC, MCMC
 
-true_probs = torch.tensor([0.9, 0.1], device='cuda')
-data = dist.Bernoulli(true_probs).sample(sample_shape=(torch.Size((1000,))))
-
 def model():
+    true_probs = torch.tensor([0.9, 0.1], device='cuda')
+    data = dist.Bernoulli(true_probs).sample(sample_shape=(torch.Size((1000,))))
     alpha = torch.tensor([1.1, 1.1], device='cuda')
     beta = torch.tensor([1.1, 1.1], device='cuda')
     p_latent = pyro.sample('p_latent', dist.Beta(alpha, beta))
