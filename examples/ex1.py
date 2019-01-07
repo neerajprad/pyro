@@ -15,6 +15,7 @@ def model():
     return p_latent
 
 
-hmc_kernel = HMC(model, trajectory_length=1, max_plate_nesting=2)
-mcmc_run = MCMC(hmc_kernel, num_samples=800, warmup_steps=500, num_chains=2, mp_context='spawn').run()
-posterior = mcmc_run.marginal(["p_latent"]).empirical["p_latent"]
+if __name__ == "__main__":
+    hmc_kernel = HMC(model, trajectory_length=1, max_plate_nesting=2)
+    mcmc_run = MCMC(hmc_kernel, num_samples=800, warmup_steps=100, num_chains=2, mp_context='spawn').run()
+    posterior = mcmc_run.marginal(["p_latent"]).empirical["p_latent"]
