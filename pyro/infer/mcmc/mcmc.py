@@ -78,10 +78,11 @@ class _Worker(object):
         self.default_tensor_type = torch.Tensor().type()
         self.event = event
 
-    def run(self, *args, **kwargs):
+    def run(self):
         pyro.set_rng_seed((self.chain_id + self.rng_seed) % MAX_SEED)
         torch.set_default_tensor_type(self.default_tensor_type)
-        args = [args.clone() if isinstance(arg, torch.Tensor) else arg for arg in args]
+        args = [arg.clone() if isinstance(arg, torch.Tensor) else arg for arg in self.args]
+        kwargs = self.kwargs
         kwargs["logger_id"] = "CHAIN:{}".format(self.chain_id)
         kwargs["log_queue"] = self.log_queue
         try:
@@ -129,10 +130,9 @@ class _ParallelSampler(TracePosterior):
         self.workers = []
         for i in range(self.num_chains):
             worker = _Worker(i, self.result_queue, self.log_queue, self.events[i], self.kernel,
-                             self.num_samples, self.warmup_steps)
+                             self.num_samples, self.warmup_steps, args, kwargs)
             worker.daemon = True
-            self.workers.append(self.ctx.Process(name=str(i), target=worker.run,
-                                                 args=args, kwargs=kwargs))
+            self.workers.append(self.ctx.Process(name=str(i), target=worker.run))
 
     def terminate(self):
         if self.log_thread.is_alive():
