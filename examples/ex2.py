@@ -31,9 +31,9 @@ class PriorKernel(TraceKernel):
 
 
 def normal_normal_model(data):
-    x = torch.tensor([0.0])
+    x = torch.tensor([0.0], device='cuda')
     y = pyro.sample('y', dist.Normal(x, torch.tensor([1.0], device='cuda')))
-    pyro.sample('obs', dist.Normal(y, torch.tensor([1.0]), device='cuda'), obs=data)
+    pyro.sample('obs', dist.Normal(y, torch.tensor([1.0], device='cuda')), obs=data)
     return y
 
 
