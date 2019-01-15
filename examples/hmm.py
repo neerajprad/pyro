@@ -25,7 +25,7 @@ from __future__ import absolute_import, division, print_function
 import argparse
 import logging
 import sys
-from time import process_time
+from time import time
 
 import torch
 import torch.nn as nn
@@ -529,12 +529,12 @@ def main(args):
     svi = SVI(model, guide, optim, elbo)
 
     # We'll train on small minibatches.
-    t_start = process_time()
+    t_start = time()
     logging.info('Step\tLoss')
     for step in range(args.num_steps):
         loss = svi.step(sequences, lengths, args=args, batch_size=args.batch_size)
         logging.info('{: >5d}\t{}'.format(step, loss / num_observations))
-    t_end = process_time()
+    t_end = time()
 
     # We evaluate on the entire training dataset,
     # excluding the prior term so our results are comparable across models.
@@ -566,11 +566,11 @@ def main(args):
         logging.info('training time per step = {}'.format(time_per_step))
 
         inferred_model = infer_discrete(model, first_available_dim=first_available_dim-1, temperature=0)
-        t_start = process_time()
+        t_start = time()
         for _ in range(args.num_steps):
             with pyro.validation_enabled(False):
                 poutine.trace(inferred_model).get_trace(sequences, lengths, args=args, batch_size=args.batch_size)
-        t_end = process_time()
+        t_end = time()
         time_per_step = (t_end - t_start) / args.num_steps
         logging.info('simulation time per step = {}'.format(time_per_step))
 
