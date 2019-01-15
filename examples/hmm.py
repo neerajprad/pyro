@@ -24,6 +24,8 @@ from __future__ import absolute_import, division, print_function
 
 import argparse
 import logging
+import sys
+from time import process_time
 
 import torch
 import torch.nn as nn
@@ -34,11 +36,11 @@ import pyro
 import pyro.distributions as dist
 from pyro import poutine
 from pyro.contrib.autoguide import AutoDelta
-from pyro.infer import SVI, JitTraceEnum_ELBO, TraceEnum_ELBO
+from pyro.infer import SVI, JitTraceEnum_ELBO, TraceEnum_ELBO, infer_discrete
 from pyro.optim import Adam
 from pyro.util import ignore_jit_warnings
 
-logging.basicConfig(format='%(relativeCreated) 9d %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(relativeCreated) 9d %(message)s', level=logging.INFO, stream=sys.stdout)
 
 
 # Let's start with a simple Hidden Markov Model.
@@ -510,8 +512,8 @@ def main(args):
     # To help debug our tensor shapes, let's print the shape of each site's
     # distribution, value, and log_prob tensor. Note this information is
     # automatically printed on most errors inside SVI.
+    first_available_dim = -2 if model is model_0 else -3
     if args.print_shapes:
-        first_available_dim = -2 if model is model_0 else -3
         guide_trace = poutine.trace(guide).get_trace(
             sequences, lengths, args=args, batch_size=args.batch_size)
         model_trace = poutine.trace(
@@ -527,10 +529,12 @@ def main(args):
     svi = SVI(model, guide, optim, elbo)
 
     # We'll train on small minibatches.
+    t_start = process_time()
     logging.info('Step\tLoss')
     for step in range(args.num_steps):
         loss = svi.step(sequences, lengths, args=args, batch_size=args.batch_size)
         logging.info('{: >5d}\t{}'.format(step, loss / num_observations))
+    t_end = process_time()
 
     # We evaluate on the entire training dataset,
     # excluding the prior term so our results are comparable across models.
@@ -557,6 +561,18 @@ def main(args):
     capacity = sum(value.reshape(-1).size(0)
                    for value in pyro.get_param_store().values())
     logging.info('{} capacity = {} parameters'.format(model.__name__, capacity))
+    if args.profile:
+        time_per_step = (t_end - t_start) / args.num_steps
+        logging.info('training time per step = {}'.format(time_per_step))
+
+        inferred_model = infer_discrete(model, first_available_dim=first_available_dim-1, temperature=0)
+        t_start = process_time()
+        for _ in range(args.num_steps):
+            with pyro.validation_enabled(False):
+                poutine.trace(inferred_model).get_trace(sequences, lengths, args=args, batch_size=args.batch_size)
+        t_end = process_time()
+        time_per_step = (t_end - t_start) / args.num_steps
+        logging.info('simulation time per step = {}'.format(time_per_step))
 
 
 if __name__ == '__main__':
@@ -573,7 +589,8 @@ if __name__ == '__main__':
     parser.add_argument("-t", "--truncate", type=int)
     parser.add_argument("-p", "--print-shapes", action="store_true")
     parser.add_argument('--cuda', action='store_true')
-    parser.add_argument('--jit', action='store_true')
+    parser.add_argument('--jit', action='store_true', default=True)
     parser.add_argument('-rp', '--raftery-parameterization', action='store_true')
+    parser.add_argument('--profile', action='store_true', default=True)
     args = parser.parse_args()
     main(args)
