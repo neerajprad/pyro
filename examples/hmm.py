@@ -529,12 +529,14 @@ def main(args):
     svi = SVI(model, guide, optim, elbo)
 
     # We'll train on small minibatches.
-    t_start = time()
+    
     logging.info('Step\tLoss')
     for step in range(args.num_steps):
+        t_start = time()
         loss = svi.step(sequences, lengths, args=args, batch_size=args.batch_size)
+        t_end = time()
         logging.info('{: >5d}\t{}'.format(step, loss / num_observations))
-    t_end = time()
+        logging.info('train time = {}'.format(t_end - t_start))
 
     # We evaluate on the entire training dataset,
     # excluding the prior term so our results are comparable across models.
@@ -562,17 +564,14 @@ def main(args):
                    for value in pyro.get_param_store().values())
     logging.info('{} capacity = {} parameters'.format(model.__name__, capacity))
     if args.profile:
-        time_per_step = (t_end - t_start) / args.num_steps
-        logging.info('training time per step = {}'.format(time_per_step))
-
         inferred_model = infer_discrete(model, first_available_dim=first_available_dim-1, temperature=0)
-        t_start = time()
+        
         for _ in range(args.num_steps):
+            t_start = time()
             with pyro.validation_enabled(False):
                 poutine.trace(inferred_model).get_trace(sequences, lengths, args=args, batch_size=args.batch_size)
-        t_end = time()
-        time_per_step = (t_end - t_start) / args.num_steps
-        logging.info('simulation time per step = {}'.format(time_per_step))
+            t_end = time()
+            logging.info('sim time = {}'.format(t_end - t_start))
 
 
 if __name__ == '__main__':
