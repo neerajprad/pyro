@@ -80,7 +80,7 @@ def profile_plate_dim():
             fieldnames = ["plate dim size", "time per step", "event"]
             writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
             writer.writerow(fieldnames)
-            for plate_dim in range(4, 88, 44):
+            for plate_dim in range(4, 88, 4):
                 print("Profiling plate dim size = {}".format(plate_dim))
                 run_args = args + ['--num-steps', str(NUM_STEPS), '--clamp-notes', str(plate_dim)]
                 train_times, sim_times = run_process(filename, run_args)
