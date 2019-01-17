@@ -136,14 +136,14 @@ def model_0(sequences, lengths, args, batch_size=None, include_prior=True):
 # compiler.  To add batch support, we'll introduce a second plate "sequences"
 # and randomly subsample data to size batch_size.  To add jit support we
 # silence some warnings and try to avoid dynamic program structure.
-def model_1(sequences, lengths, args, batch_size=None, include_prior=True):
+def model_1(sequences, lengths, args, num_sequences, include_prior=True):
     # Sometimes it is safe to ignore jit warnings. Here we use the
     # pyro.util.ignore_jit_warnings context manager to silence warnings about
     # conversion to integer, since we know all three numbers will be the same
     # across all invocations to the model.
     with ignore_jit_warnings():
-        num_sequences, max_length, data_dim = map(int, sequences.shape)
-        assert lengths.shape == (num_sequences,)
+        n, max_length, data_dim = map(int, sequences.shape)
+        assert lengths.shape == (n,)
         assert lengths.max() <= max_length
     with poutine.mask(mask=include_prior):
         probs_x = pyro.sample("probs_x",
@@ -157,8 +157,7 @@ def model_1(sequences, lengths, args, batch_size=None, include_prior=True):
     # We subsample batch_size items out of num_sequences items. Note that since
     # we're using dim=-1 for the notes plate, we need to batch over a different
     # dimension, here dim=-2.
-    with pyro.plate("sequences", num_sequences, batch_size, dim=-2) as batch:
-        lengths = lengths[batch]
+    with pyro.plate("sequences", num_sequences, subsample=sequences, dim=-2):
         x = 0
         # If we are not using the jit, then we can vary the program structure
         # each call by running for a dynamically determined number of time
@@ -172,7 +171,7 @@ def model_1(sequences, lengths, args, batch_size=None, include_prior=True):
                                 infer={"enumerate": "parallel"})
                 with tones_plate:
                     pyro.sample("y_{}".format(t), dist.Bernoulli(probs_y[x.squeeze(-1)]),
-                                obs=sequences[batch, t])
+                                obs=sequences[:, t])
 # Let's see how batching changes the shapes of sample sites:
 # $ python examples/hmm.py -m 1 -n 1 -t 5 --batch-size=10 --print-shapes
 # ...
@@ -489,9 +488,17 @@ def main(args):
         model.__name__, len(data['train']['sequences'])))
     sequences = data['train']['sequences']
     lengths = data['train']['sequence_lengths']
+    num_sequences = len(sequences)
+
+    if args.batch_size:
+        lengths = lengths[:args.batch_size]
+        sequences = sequences[:args.batch_size]
 
     # find all the notes that are present at least once in the training set
     present_notes = ((sequences == 1).sum(0).sum(0) > 0)
+    if args.clamp_notes:
+        present_notes = torch.ones(88, dtype=torch.uint8, device=sequences.device)
+        present_notes[args.clamp_notes:] = 0
     # remove notes that are never played (we remove 37/88 notes)
     sequences = sequences[..., present_notes]
 
@@ -515,10 +522,10 @@ def main(args):
     first_available_dim = -2 if model is model_0 else -3
     if args.print_shapes:
         guide_trace = poutine.trace(guide).get_trace(
-            sequences, lengths, args=args, batch_size=args.batch_size)
+            sequences, lengths, args=args, num_sequences=num_sequences)
         model_trace = poutine.trace(
             poutine.replay(poutine.enum(model, first_available_dim), guide_trace)).get_trace(
-            sequences, lengths, args=args, batch_size=args.batch_size)
+            sequences, lengths, args=args, num_sequences=num_sequences)
         logging.info(model_trace.format_shapes())
 
     # Enumeration requires a TraceEnum elbo and declaring the max_plate_nesting.
@@ -533,43 +540,19 @@ def main(args):
     logging.info('Step\tLoss')
     for step in range(args.num_steps):
         t_start = time()
-        loss = svi.step(sequences, lengths, args=args, batch_size=args.batch_size)
+        loss = svi.step(sequences, lengths, args=args, num_sequences=num_sequences)
         t_end = time()
         logging.info('{: >5d}\t{}'.format(step, loss / num_observations))
         logging.info('train time = {}'.format(t_end - t_start))
 
-    # We evaluate on the entire training dataset,
-    # excluding the prior term so our results are comparable across models.
-    train_loss = elbo.loss(model, guide, sequences, lengths, args, include_prior=False)
-    logging.info('training loss = {}'.format(train_loss / num_observations))
-
-    # Finally we evaluate on the test dataset.
-    logging.info('-' * 40)
-    logging.info('Evaluating on {} test sequences'.format(len(data['test']['sequences'])))
-    sequences = data['test']['sequences'][..., present_notes]
-    lengths = data['test']['sequence_lengths']
-    if args.truncate:
-        lengths.clamp_(max=args.truncate)
-    num_observations = float(lengths.sum())
-
-    # note that since we removed unseen notes above (to make the problem a bit easier and for
-    # numerical stability) this test loss may not be directly comparable to numbers
-    # reported on this dataset elsewhere.
-    test_loss = elbo.loss(model, guide, sequences, lengths, args=args, include_prior=False)
-    logging.info('test loss = {}'.format(test_loss / num_observations))
-
-    # We expect models with higher capacity to perform better,
-    # but eventually overfit to the training set.
-    capacity = sum(value.reshape(-1).size(0)
-                   for value in pyro.get_param_store().values())
-    logging.info('{} capacity = {} parameters'.format(model.__name__, capacity))
     if args.profile:
         inferred_model = infer_discrete(model, first_available_dim=first_available_dim-1, temperature=0)
         
         for _ in range(args.num_steps):
             t_start = time()
             with pyro.validation_enabled(False):
-                poutine.trace(inferred_model).get_trace(sequences, lengths, args=args, batch_size=args.batch_size)
+                poutine.trace(inferred_model).get_trace(sequences, lengths, args=args,
+                                                        num_sequences=num_sequences)
             t_end = time()
             logging.info('sim time = {}'.format(t_end - t_start))
 
@@ -589,6 +572,7 @@ if __name__ == '__main__':
     parser.add_argument("-p", "--print-shapes", action="store_true")
     parser.add_argument('--cuda', action='store_true')
     parser.add_argument('--jit', action='store_true', default=True)
+    parser.add_argument("--clamp-notes", type=int, default=10)
     parser.add_argument('-rp', '--raftery-parameterization', action='store_true')
     parser.add_argument('--profile', action='store_true', default=True)
     args = parser.parse_args()
