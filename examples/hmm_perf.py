@@ -12,6 +12,8 @@ MODELS = [
 ]
 
 
+NUM_STEPS = 60
+
 def run_process(filename, args):
     out = check_output([sys.executable, filename] + args).decode('utf-8')
     train_times, sim_times = [], []
@@ -23,8 +25,8 @@ def run_process(filename, args):
         if 'sim time' in line:
             sim_time = float(line.split('=')[1].strip())
             sim_times.append(sim_time)
-    assert len(train_times) == int(args[-1])
-    assert len(sim_times) == int(args[-1])    
+    assert len(train_times) == NUM_STEPS
+    assert len(sim_times) == NUM_STEPS
     return train_times, sim_times
 
 
@@ -40,8 +42,7 @@ def profile_hidden_dim():
             writer.writerow(fieldnames)
             for hidden_dim in range(4, 102, 4):
                 print("Profiling hidden dim size = {}".format(hidden_dim))
-                num_steps = 60
-                run_args = args + ['--hidden-dim', str(hidden_dim), '--num-steps', str(num_steps)]
+                run_args = args + ['--hidden-dim', str(hidden_dim), '--num-steps', str(NUM_STEPS)]
                 train_times, sim_times = run_process(filename, run_args)
                 for t in train_times:
                     writer.writerow([hidden_dim, t, "training"])
@@ -61,8 +62,7 @@ def profile_batch_size():
             writer.writerow(fieldnames)
             for batch_size in range(4, 100, 4):
                 print("Profiling batch size = {}".format(batch_size))
-                num_steps = 60
-                run_args = args + ['--batch-size', str(batch_size), '--num-steps', str(num_steps)]
+                run_args = args + ['--batch-size', str(batch_size), '--num-steps', str(NUM_STEPS)]
                 train_times, sim_times = run_process(filename, run_args)
                 for t in train_times:
                     writer.writerow([batch_size, t, "training"])
@@ -82,8 +82,7 @@ def profile_plate_dim():
             writer.writerow(fieldnames)
             for plate_dim in range(4, 88, 44):
                 print("Profiling plate dim size = {}".format(plate_dim))
-                num_steps = 60
-                run_args = args + ['--num-steps', str(num_steps), '--clamp-notes', str(plate_dim)]
+                run_args = args + ['--num-steps', str(NUM_STEPS), '--clamp-notes', str(plate_dim)]
                 train_times, sim_times = run_process(filename, run_args)
                 for t in train_times:
                     writer.writerow([plate_dim, t, "training"])
