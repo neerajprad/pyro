@@ -60,7 +60,7 @@ def profile_batch_size():
             fieldnames = ["batch size", "time per step", "event"]
             writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
             writer.writerow(fieldnames)
-            for batch_size in range(4, 100, 4):
+            for batch_size in range(4, 102, 4):
                 print("Profiling batch size = {}".format(batch_size))
                 run_args = args + ['--batch-size', str(batch_size), '--num-steps', str(NUM_STEPS)]
                 train_times, sim_times = run_process(filename, run_args)
@@ -80,7 +80,7 @@ def profile_plate_dim():
             fieldnames = ["plate dim size", "time per step", "event"]
             writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
             writer.writerow(fieldnames)
-            for plate_dim in range(4, 88, 4):
+            for plate_dim in range(4, 89, 4):
                 print("Profiling plate dim size = {}".format(plate_dim))
                 run_args = args + ['--num-steps', str(NUM_STEPS), '--clamp-notes', str(plate_dim)]
                 train_times, sim_times = run_process(filename, run_args)

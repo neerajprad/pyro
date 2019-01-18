@@ -495,10 +495,8 @@ def main(args):
         sequences = sequences[:args.batch_size]
 
     # find all the notes that are present at least once in the training set
-    present_notes = ((sequences == 1).sum(0).sum(0) > 0)
-    if args.clamp_notes:
-        present_notes = torch.ones(88, dtype=torch.uint8, device=sequences.device)
-        present_notes[args.clamp_notes:] = 0
+    present_notes = torch.ones(88, dtype=torch.uint8, device=sequences.device)
+    present_notes[args.clamp_notes:] = 0
     # remove notes that are never played (we remove 37/88 notes)
     sequences = sequences[..., present_notes]
 
@@ -566,7 +564,7 @@ if __name__ == '__main__':
                         help="one of: {}".format(", ".join(sorted(models.keys()))))
     parser.add_argument("-n", "--num-steps", default=50, type=int)
     parser.add_argument("-b", "--batch-size", default=8, type=int)
-    parser.add_argument("-d", "--hidden-dim", default=16, type=int)
+    parser.add_argument("-d", "--hidden-dim", default=32, type=int)
     parser.add_argument("-nn", "--nn-dim", default=48, type=int)
     parser.add_argument("-nc", "--nn-channels", default=2, type=int)
     parser.add_argument("-lr", "--learning-rate", default=0.05, type=float)
@@ -574,7 +572,7 @@ if __name__ == '__main__':
     parser.add_argument("-p", "--print-shapes", action="store_true")
     parser.add_argument('--cuda', action='store_true')
     parser.add_argument('--jit', action='store_true', default=True)
-    parser.add_argument("--clamp-notes", type=int, default=0)
+    parser.add_argument("--clamp-notes", type=int, default=88)
     parser.add_argument('-rp', '--raftery-parameterization', action='store_true')
     parser.add_argument('--profile', action='store_true', default=True)
     args = parser.parse_args()
