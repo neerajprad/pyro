@@ -12,7 +12,7 @@ MODELS = [
 ]
 
 
-NUM_STEPS = 60
+NUM_STEPS = 100
 
 def run_process(filename, args):
     out = check_output([sys.executable, filename] + args).decode('utf-8')

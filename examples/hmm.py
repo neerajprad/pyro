@@ -572,7 +572,7 @@ if __name__ == '__main__':
     parser.add_argument("-p", "--print-shapes", action="store_true")
     parser.add_argument('--cuda', action='store_true')
     parser.add_argument('--jit', action='store_true', default=True)
-    parser.add_argument("--clamp-notes", type=int, default=10)
+    parser.add_argument("--clamp-notes", type=int, default=0)
     parser.add_argument('-rp', '--raftery-parameterization', action='store_true')
     parser.add_argument('--profile', action='store_true', default=True)
     args = parser.parse_args()
