@@ -538,6 +538,8 @@ def main(args):
     # We'll train on small minibatches.
     
     logging.info('Step\tLoss')
+    # do not record time for the jit step
+    svi.step(sequences, lengths, args=args, num_sequences=num_sequences)
     for step in range(args.num_steps):
         t_start = time()
         loss = svi.step(sequences, lengths, args=args, num_sequences=num_sequences)
