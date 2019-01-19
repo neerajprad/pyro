@@ -636,7 +636,7 @@ if __name__ == '__main__':
     parser.add_argument("-m", "--model", default="1", type=str,
                         help="one of: {}".format(", ".join(sorted(models.keys()))))
     parser.add_argument("-n", "--num-steps", default=50, type=int)
-    parser.add_argument("-b", "--batch-size", default=8, type=int)
+    parser.add_argument("-b", "--batch-size", default=32, type=int)
     parser.add_argument("-d", "--hidden-dim", default=32, type=int)
     parser.add_argument("-nn", "--nn-dim", default=48, type=int)
     parser.add_argument("-nc", "--nn-channels", default=2, type=int)
