@@ -621,7 +621,7 @@ def profile_plate_dim(args):
             writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
             writer.writerow(fieldnames)
             for plate_dim in range(4, 89, 4):
-                args.clamp_notes(plate_dim)
+                args.clamp_notes = plate_dim
                 print("Profiling plate dim size = {}, args = {}".format(plate_dim, args))
                 train_times, sim_times = run(args)
                 for t in train_times:
