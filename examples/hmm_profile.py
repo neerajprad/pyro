@@ -23,6 +23,7 @@ To marginalize out discrete variables ``x`` in Pyro's SVI:
 from __future__ import absolute_import, division, print_function
 
 import argparse
+import csv
 import logging
 import sys
 from time import time
@@ -41,6 +42,12 @@ from pyro.optim import Adam
 from pyro.util import ignore_jit_warnings
 
 logging.basicConfig(format='%(relativeCreated) 9d %(message)s', level=logging.INFO, stream=sys.stdout)
+
+
+MODELS = [
+    {'cuda': False},
+    {'cuda': True},
+]
 
 
 # Let's start with a simple Hidden Markov Model.
@@ -68,14 +75,14 @@ def model_0(sequences, lengths, args, batch_size=None, include_prior=True):
         # state with 10% probability.
         probs_x = pyro.sample("probs_x",
                               dist.Dirichlet(0.9 * torch.eye(args.hidden_dim) + 0.1)
-                                  .to_event(1))
+                              .to_event(1))
         # We put a weak prior on the conditional probability of a tone sounding.
         # We know that on average about 4 of 88 tones are active, so we'll set a
         # rough weak prior of 10% of the notes being active at any one time.
         probs_y = pyro.sample("probs_y",
                               dist.Beta(0.1, 0.9)
-                                  .expand([args.hidden_dim, data_dim])
-                                  .to_event(2))
+                              .expand([args.hidden_dim, data_dim])
+                              .to_event(2))
     # In this first model we'll sequentially iterate over sequences in a
     # minibatch; this will make it easy to reason about tensor shapes.
     tones_plate = pyro.plate("tones", data_dim, dim=-1)
@@ -92,6 +99,8 @@ def model_0(sequences, lengths, args, batch_size=None, include_prior=True):
             with tones_plate:
                 pyro.sample("y_{}_{}".format(i, t), dist.Bernoulli(probs_y[x.squeeze(-1)]),
                             obs=sequence[t])
+
+
 # To see how enumeration changes the shapes of these sample sites, we can use
 # the Trace.format_shapes() to print shapes at each site:
 # $ python examples/hmm.py -m 0 -n 1 -b 1 -t 5 --print-shapes
@@ -148,11 +157,11 @@ def model_1(sequences, lengths, args, num_sequences, include_prior=True):
     with poutine.mask(mask=include_prior):
         probs_x = pyro.sample("probs_x",
                               dist.Dirichlet(0.9 * torch.eye(args.hidden_dim) + 0.1)
-                                  .to_event(1))
+                              .to_event(1))
         probs_y = pyro.sample("probs_y",
                               dist.Beta(0.1, 0.9)
-                                  .expand([args.hidden_dim, data_dim])
-                                  .to_event(2))
+                              .expand([args.hidden_dim, data_dim])
+                              .to_event(2))
     tones_plate = pyro.plate("tones", data_dim, dim=-1)
     # We subsample batch_size items out of num_sequences items. Note that since
     # we're using dim=-1 for the notes plate, we need to batch over a different
@@ -172,6 +181,8 @@ def model_1(sequences, lengths, args, num_sequences, include_prior=True):
                 with tones_plate:
                     pyro.sample("y_{}".format(t), dist.Bernoulli(probs_y[x.squeeze(-1)]),
                                 obs=sequences[:, t])
+
+
 # Let's see how batching changes the shapes of sample sites:
 # $ python examples/hmm.py -m 1 -n 1 -t 5 --batch-size=10 --print-shapes
 # ...
@@ -224,11 +235,11 @@ def model_2(sequences, lengths, args, batch_size=None, include_prior=True):
     with poutine.mask(mask=include_prior):
         probs_x = pyro.sample("probs_x",
                               dist.Dirichlet(0.9 * torch.eye(args.hidden_dim) + 0.1)
-                                  .to_event(1))
+                              .to_event(1))
         probs_y = pyro.sample("probs_y",
                               dist.Beta(0.1, 0.9)
-                                  .expand([args.hidden_dim, 2, data_dim])
-                                  .to_event(3))
+                              .expand([args.hidden_dim, 2, data_dim])
+                              .to_event(3))
     tones_plate = pyro.plate("tones", data_dim, dim=-1)
     with pyro.plate("sequences", num_sequences, batch_size, dim=-2) as batch:
         lengths = lengths[batch]
@@ -267,14 +278,14 @@ def model_3(sequences, lengths, args, batch_size=None, include_prior=True):
     with poutine.mask(mask=include_prior):
         probs_w = pyro.sample("probs_w",
                               dist.Dirichlet(0.9 * torch.eye(hidden_dim) + 0.1)
-                                  .to_event(1))
+                              .to_event(1))
         probs_x = pyro.sample("probs_x",
                               dist.Dirichlet(0.9 * torch.eye(hidden_dim) + 0.1)
-                                  .to_event(1))
+                              .to_event(1))
         probs_y = pyro.sample("probs_y",
                               dist.Beta(0.1, 0.9)
-                                  .expand([hidden_dim, hidden_dim, data_dim])
-                                  .to_event(3))
+                              .expand([hidden_dim, hidden_dim, data_dim])
+                              .to_event(3))
     tones_plate = pyro.plate("tones", data_dim, dim=-1)
     with pyro.plate("sequences", num_sequences, batch_size, dim=-2) as batch:
         lengths = lengths[batch]
@@ -312,15 +323,15 @@ def model_4(sequences, lengths, args, batch_size=None, include_prior=True):
     with poutine.mask(mask=include_prior):
         probs_w = pyro.sample("probs_w",
                               dist.Dirichlet(0.9 * torch.eye(hidden_dim) + 0.1)
-                                  .to_event(1))
+                              .to_event(1))
         probs_x = pyro.sample("probs_x",
                               dist.Dirichlet(0.9 * torch.eye(hidden_dim) + 0.1)
-                                  .expand_by([hidden_dim])
-                                  .to_event(2))
+                              .expand_by([hidden_dim])
+                              .to_event(2))
         probs_y = pyro.sample("probs_y",
                               dist.Beta(0.1, 0.9)
-                                  .expand([hidden_dim, hidden_dim, data_dim])
-                                  .to_event(3))
+                              .expand([hidden_dim, hidden_dim, data_dim])
+                              .to_event(3))
     tones_plate = pyro.plate("tones", data_dim, dim=-1)
     with pyro.plate("sequences", num_sequences, batch_size, dim=-2) as batch:
         lengths = lengths[batch]
@@ -394,7 +405,7 @@ def model_5(sequences, lengths, args, batch_size=None, include_prior=True):
     with poutine.mask(mask=include_prior):
         probs_x = pyro.sample("probs_x",
                               dist.Dirichlet(0.9 * torch.eye(args.hidden_dim) + 0.1)
-                                  .to_event(1))
+                              .to_event(1))
     with pyro.plate("sequences", num_sequences, batch_size, dim=-2) as batch:
         lengths = lengths[batch]
         x = 0
@@ -426,48 +437,48 @@ def model_5(sequences, lengths, args, batch_size=None, include_prior=True):
 #  the transition and emission probabilities as parameters (so they have no prior).
 
 def model_6(sequences, lengths, args, batch_size=None, include_prior=False):
-        num_sequences, max_length, data_dim = sequences.shape
-        assert lengths.shape == (num_sequences,)
-        assert lengths.max() <= max_length
-        hidden_dim = args.hidden_dim
-        hidden = torch.arange(hidden_dim, dtype=torch.long)
+    num_sequences, max_length, data_dim = sequences.shape
+    assert lengths.shape == (num_sequences,)
+    assert lengths.max() <= max_length
+    hidden_dim = args.hidden_dim
+    hidden = torch.arange(hidden_dim, dtype=torch.long)
 
-        if not args.raftery_parameterization:
-            # Explicitly parameterize the full tensor of transition probabilities, which
-            # has hidden_dim cubed entries.
-            probs_x = pyro.param("probs_x", torch.rand(hidden_dim, hidden_dim, hidden_dim),
-                                 constraint=constraints.simplex)
-        else:
-            # Use the more parsimonious "Raftery" parameterization of
-            # the tensor of transition probabilities. See reference:
-            # Raftery, A. E. A model for high-order markov chains.
-            # Journal of the Royal Statistical Society. 1985.
-            probs_x1 = pyro.param("probs_x1", torch.rand(hidden_dim, hidden_dim),
-                                  constraint=constraints.simplex)
-            probs_x2 = pyro.param("probs_x2", torch.rand(hidden_dim, hidden_dim),
-                                  constraint=constraints.simplex)
-            mix_lambda = pyro.param("mix_lambda", torch.tensor(0.5), constraint=constraints.unit_interval)
-            # we use broadcasting to combine two tensors of shape (hidden_dim, hidden_dim) and
-            # (hidden_dim, 1, hidden_dim) to obtain a tensor of shape (hidden_dim, hidden_dim, hidden_dim)
-            probs_x = mix_lambda * probs_x1 + (1.0 - mix_lambda) * probs_x2.unsqueeze(-2)
+    if not args.raftery_parameterization:
+        # Explicitly parameterize the full tensor of transition probabilities, which
+        # has hidden_dim cubed entries.
+        probs_x = pyro.param("probs_x", torch.rand(hidden_dim, hidden_dim, hidden_dim),
+                             constraint=constraints.simplex)
+    else:
+        # Use the more parsimonious "Raftery" parameterization of
+        # the tensor of transition probabilities. See reference:
+        # Raftery, A. E. A model for high-order markov chains.
+        # Journal of the Royal Statistical Society. 1985.
+        probs_x1 = pyro.param("probs_x1", torch.rand(hidden_dim, hidden_dim),
+                              constraint=constraints.simplex)
+        probs_x2 = pyro.param("probs_x2", torch.rand(hidden_dim, hidden_dim),
+                              constraint=constraints.simplex)
+        mix_lambda = pyro.param("mix_lambda", torch.tensor(0.5), constraint=constraints.unit_interval)
+        # we use broadcasting to combine two tensors of shape (hidden_dim, hidden_dim) and
+        # (hidden_dim, 1, hidden_dim) to obtain a tensor of shape (hidden_dim, hidden_dim, hidden_dim)
+        probs_x = mix_lambda * probs_x1 + (1.0 - mix_lambda) * probs_x2.unsqueeze(-2)
 
-        probs_y = pyro.param("probs_y", torch.rand(hidden_dim, data_dim),
-                             constraint=constraints.unit_interval)
-        tones_plate = pyro.plate("tones", data_dim, dim=-1)
-        with pyro.plate("sequences", num_sequences, batch_size, dim=-2) as batch:
-            lengths = lengths[batch]
-            x_curr, x_prev = torch.tensor(0), torch.tensor(0)
-            # we need to pass the argument `history=2' to `pyro.markov()`
-            # since our model is now 2-markov
-            for t in pyro.markov(range(lengths.max()), history=2):
-                with poutine.mask(mask=(t < lengths).unsqueeze(-1)):
-                    probs_x_t = probs_x[x_prev.unsqueeze(-1), x_curr.unsqueeze(-1), hidden]
-                    x_prev, x_curr = x_curr, pyro.sample("x_{}".format(t), dist.Categorical(probs_x_t),
-                                                         infer={"enumerate": "parallel"})
-                    with tones_plate:
-                        probs_y_t = probs_y[x_curr.squeeze(-1)]
-                        pyro.sample("y_{}".format(t), dist.Bernoulli(probs_y_t),
-                                    obs=sequences[batch, t])
+    probs_y = pyro.param("probs_y", torch.rand(hidden_dim, data_dim),
+                         constraint=constraints.unit_interval)
+    tones_plate = pyro.plate("tones", data_dim, dim=-1)
+    with pyro.plate("sequences", num_sequences, batch_size, dim=-2) as batch:
+        lengths = lengths[batch]
+        x_curr, x_prev = torch.tensor(0), torch.tensor(0)
+        # we need to pass the argument `history=2' to `pyro.markov()`
+        # since our model is now 2-markov
+        for t in pyro.markov(range(lengths.max()), history=2):
+            with poutine.mask(mask=(t < lengths).unsqueeze(-1)):
+                probs_x_t = probs_x[x_prev.unsqueeze(-1), x_curr.unsqueeze(-1), hidden]
+                x_prev, x_curr = x_curr, pyro.sample("x_{}".format(t), dist.Categorical(probs_x_t),
+                                                     infer={"enumerate": "parallel"})
+                with tones_plate:
+                    probs_y_t = probs_y[x_curr.squeeze(-1)]
+                    pyro.sample("y_{}".format(t), dist.Bernoulli(probs_y_t),
+                                obs=sequences[batch, t])
 
 
 models = {name[len('model_'):]: model
@@ -475,7 +486,7 @@ models = {name[len('model_'):]: model
           if name.startswith('model_')}
 
 
-def main(args):
+def run(args):
     if args.cuda:
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
 
@@ -534,27 +545,89 @@ def main(args):
     svi = SVI(model, guide, optim, elbo)
 
     # We'll train on small minibatches.
-    
+
     logging.info('Step\tLoss')
     # do not record time for the jit step
     svi.step(sequences, lengths, args=args, num_sequences=num_sequences)
+    train_times, sim_times = [], []
     for step in range(args.num_steps):
         t_start = time()
         loss = svi.step(sequences, lengths, args=args, num_sequences=num_sequences)
         t_end = time()
         logging.info('{: >5d}\t{}'.format(step, loss / num_observations))
-        logging.info('train time = {}'.format(t_end - t_start))
+        train_time = t_end - t_start
+        logging.info('train time = {}'.format(train_time))
+        train_times.append(train_time)
 
-    if args.profile:
-        inferred_model = infer_discrete(model, first_available_dim=first_available_dim-1, temperature=0)
-        
-        for _ in range(args.num_steps):
-            t_start = time()
-            with pyro.validation_enabled(False):
-                poutine.trace(inferred_model).get_trace(sequences, lengths, args=args,
-                                                        num_sequences=num_sequences)
-            t_end = time()
-            logging.info('sim time = {}'.format(t_end - t_start))
+    inferred_model = infer_discrete(model, first_available_dim=first_available_dim - 1, temperature=0)
+
+    for _ in range(args.num_steps):
+        t_start = time()
+        with pyro.validation_enabled(False):
+            poutine.trace(inferred_model).get_trace(sequences, lengths, args=args,
+                                                    num_sequences=num_sequences)
+        t_end = time()
+        sim_time = t_end - t_start
+        logging.info('sim time = {}'.format(sim_time))
+        sim_times.append(sim_time)
+    return train_times, sim_times
+
+
+def profile_hidden_dim(args):
+    for model in MODELS:
+        out_file = "hidden_dim_cuda" if model["cuda"] else "hidden_dim_cpu"
+        if model["cuda"]:
+            args.cuda = True
+        with open(out_file + '.csv', 'w', newline='') as f:
+            fieldnames = ["hidden dim size", "time per step", "event"]
+            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(fieldnames)
+            for hidden_dim in range(4, 102, 4):
+                args.hidden_dim = hidden_dim
+                print("Profiling hidden dim size = {}, args = {}".format(hidden_dim, args))
+                train_times, sim_times = run(args)
+                for t in train_times:
+                    writer.writerow([hidden_dim, t, "training"])
+                for t in sim_times:
+                    writer.writerow([hidden_dim, t, "simulation"])
+
+
+def profile_batch_size(args):
+    for model in MODELS:
+        out_file = "batch_size_cuda" if model["cuda"] else "batch_size_cpu"
+        if model["cuda"]:
+            args.cuda = True
+        with open(out_file + '.csv', 'w', newline='') as f:
+            fieldnames = ["batch size", "time per step", "event"]
+            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(fieldnames)
+            for batch_size in range(4, 102, 4):
+                args.batch_size = batch_size
+                print("Profiling batch size = {}, args = {}".format(batch_size, args))
+                train_times, sim_times = run(args)
+                for t in train_times:
+                    writer.writerow([batch_size, t, "training"])
+                for t in sim_times:
+                    writer.writerow([batch_size, t, "simulation"])
+
+
+def profile_plate_dim(args):
+    for model in MODELS:
+        out_file = "plate_dim_cuda" if model["cuda"] else "plate_dim_cpu"
+        if model["cuda"]:
+            args.cuda = True
+        with open(out_file + '.csv', 'w', newline='') as f:
+            fieldnames = ["plate dim size", "time per step", "event"]
+            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(fieldnames)
+            for plate_dim in range(4, 89, 4):
+                args.clamp_notes(plate_dim)
+                print("Profiling plate dim size = {}, args = {}".format(plate_dim, args))
+                train_times, sim_times = run(args)
+                for t in train_times:
+                    writer.writerow([plate_dim, t, "training"])
+                for t in sim_times:
+                    writer.writerow([plate_dim, t, "simulation"])
 
 
 if __name__ == '__main__':
@@ -563,7 +636,7 @@ if __name__ == '__main__':
     parser.add_argument("-m", "--model", default="1", type=str,
                         help="one of: {}".format(", ".join(sorted(models.keys()))))
     parser.add_argument("-n", "--num-steps", default=50, type=int)
-    parser.add_argument("-b", "--batch-size", default=20, type=int)
+    parser.add_argument("-b", "--batch-size", default=8, type=int)
     parser.add_argument("-d", "--hidden-dim", default=32, type=int)
     parser.add_argument("-nn", "--nn-dim", default=48, type=int)
     parser.add_argument("-nc", "--nn-channels", default=2, type=int)
@@ -574,6 +647,11 @@ if __name__ == '__main__':
     parser.add_argument('--jit', action='store_true', default=True)
     parser.add_argument("--clamp-notes", type=int, default=88)
     parser.add_argument('-rp', '--raftery-parameterization', action='store_true')
-    parser.add_argument('--profile', action='store_true', default=True)
+    parser.add_argument('--profile', type=str, default='batch_size')
     args = parser.parse_args()
-    main(args)
+    if args.profile == "hidden_dim":
+        profile_hidden_dim(args)
+    elif args.profile == "batch_size":
+        profile_batch_size(args)
+    elif args.profile == "plate_dim":
+        profile_plate_dim(args)
