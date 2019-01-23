@@ -138,7 +138,7 @@ def main(args):
         writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
         writer.writerow(["plate_size", "time"])
         for plate_size in range(8, 1 + args.max_plate_size, 8):
-            _CACHE.clear()
+            # _CACHE.clear()
             operands = []
             for dims in inputs:
                 shape = torch.Size([plate_size if d in batch_dims else dim_size
