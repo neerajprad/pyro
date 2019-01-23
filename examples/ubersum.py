@@ -130,7 +130,10 @@ def main(args):
 
     dim_size = args.dim_size
     times = {}
-    file = os.path.join(args.outdir, args.method + ".csv")
+    filename = args.method
+    if args.naive:
+        filename = "naive_" + filename
+    file = os.path.join(args.outdir, filename + ".csv")
     with open(file, "w", newline="") as f:
         writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
         writer.writerow(["plate_size", "time"])
